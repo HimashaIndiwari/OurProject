@@ -5,6 +5,13 @@ import SessionBooking from '../components/SessionBooking';
 import SessionManager from '../components/SessionManager';
 import SessionCalendar from '../components/SessionCalendar';
 import PaymentEnrollment from '../components/PaymentEnrollment';
+import { 
+  cacheUserProfile, 
+  cacheUserEnrollments, 
+  getCachedUserProfile, 
+  getCachedUserEnrollments,
+  isUserLoggedIn 
+} from '../utils/sessionManager';
 
 export default function Profile() {
     const [user, setUser] = useState(null);
@@ -19,6 +26,7 @@ export default function Profile() {
     const [selectedEnrollment, setSelectedEnrollment] = useState(null);
     const [paymentEnrollmentData, setPaymentEnrollmentData] = useState(null);
     const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+    const [isOfflineMode, setIsOfflineMode] = useState(false);
     const navigate = useNavigate(); // <-- Import and use navigate for redirects
 
     // Fallback component in case of any errors
@@ -37,22 +45,30 @@ export default function Profile() {
 
     useEffect(() => {
         const fetchUserProfile = async () => {
-            // --- THIS IS THE FIX ---
+            // --- ENHANCED PROFILE FETCHING ---
             // First, get the user info from storage
             const userInfoString = localStorage.getItem('userInfo');
 
-            // Safety Check 1: Make sure there is something in storage
+            // Check if user is logged in
             if (!userInfoString) {
-                setError('You are not logged in.');
+                // User is not logged in, but we can still show cached profile data
+                const cachedProfile = getCachedUserProfile();
+                if (cachedProfile) {
+                    setUser(cachedProfile);
+                    setIsOfflineMode(true);
+                    setLoading(false);
+                    return;
+                }
+                setError('You are not logged in. Please log in to view your profile.');
                 setLoading(false);
-                navigate('/login'); // Redirect to login if no user info is found
+                navigate('/login');
                 return;
             }
 
             try {
                 const userInfo = JSON.parse(userInfoString);
                 
-                // Safety Check 2: Make sure the user info has a token
+                // Safety Check: Make sure the user info has a token
                 if (!userInfo.token) {
                     setError('Authentication token is missing. Please log in again.');
                     setLoading(false);
@@ -67,12 +83,16 @@ export default function Profile() {
                 };
                 const { data } = await axios.get('http://localhost:5000/api/users/profile', config);
                 setUser(data);
+                setIsOfflineMode(false);
+                
+                // Cache the profile data for offline viewing
+                cacheUserProfile(data);
             } catch (err) {
                 console.error('Error fetching user profile:', err);
                 // Fallback: Use localStorage user data if API fails
                 const userInfo = JSON.parse(localStorage.getItem('userInfo'));
                 if (userInfo && userInfo._id) {
-                    setUser({
+                    const fallbackUser = {
                         _id: userInfo._id,
                         firstName: userInfo.firstName,
                         lastName: userInfo.lastName,
@@ -83,7 +103,11 @@ export default function Profile() {
                         address: userInfo.address,
                         dob: userInfo.dob,
                         createdAt: userInfo.createdAt || new Date().toISOString()
-                    });
+                    };
+                    setUser(fallbackUser);
+                    setIsOfflineMode(true);
+                    // Cache the fallback data
+                    cacheUserProfile(fallbackUser);
                 } else {
                     setError('Failed to fetch profile data. Your session may have expired.');
                     localStorage.removeItem('userInfo'); // Clear the bad data
@@ -128,6 +152,17 @@ export default function Profile() {
             if (user && user.role === 'customer') {
                 try {
                     const userInfo = JSON.parse(localStorage.getItem('userInfo'));
+                    
+                    // Check if user is logged in
+                    if (!userInfo || !userInfo.token) {
+                        // User is not logged in, try to get cached enrollments
+                        const cachedEnrollments = getCachedUserEnrollments();
+                        if (cachedEnrollments) {
+                            setEnrollments(cachedEnrollments);
+                        }
+                        return;
+                    }
+
                     const config = {
                         headers: {
                             Authorization: `Bearer ${userInfo.token}`,
@@ -136,17 +171,26 @@ export default function Profile() {
                     const { data } = await axios.get(`http://localhost:5000/api/enrollments/user/${userInfo._id}`, config);
                     
                     // Handle both response structures
+                    let enrollmentsData = [];
                     if (data.data && data.data.docs) {
-                        setEnrollments(data.data.docs || []);
+                        enrollmentsData = data.data.docs || [];
                     } else if (data.data && Array.isArray(data.data)) {
-                        setEnrollments(data.data || []);
+                        enrollmentsData = data.data || [];
                     } else if (data.enrollments) {
-                        setEnrollments(data.enrollments || []);
-                    } else {
-                        setEnrollments([]);
+                        enrollmentsData = data.enrollments || [];
                     }
+                    
+                    setEnrollments(enrollmentsData);
+                    
+                    // Cache the updated enrollments data
+                    cacheUserEnrollments(enrollmentsData);
                 } catch (err) {
                     console.error('Error refreshing enrollments:', err);
+                    // Try to use cached data if API fails
+                    const cachedEnrollments = getCachedUserEnrollments();
+                    if (cachedEnrollments) {
+                        setEnrollments(cachedEnrollments);
+                    }
                 }
             }
         };
@@ -164,6 +208,20 @@ export default function Profile() {
             setEnrollmentsLoading(true);
             try {
                 const userInfo = JSON.parse(localStorage.getItem('userInfo'));
+                
+                // Check if user is logged in
+                if (!userInfo || !userInfo.token) {
+                    // User is not logged in, try to get cached enrollments
+                    const cachedEnrollments = getCachedUserEnrollments();
+                    if (cachedEnrollments) {
+                        setEnrollments(cachedEnrollments);
+                    } else {
+                        setEnrollments([]);
+                    }
+                    setEnrollmentsLoading(false);
+                    return;
+                }
+
                 const config = {
                     headers: {
                         Authorization: `Bearer ${userInfo.token}`,
@@ -173,21 +231,31 @@ export default function Profile() {
                 const { data } = await axios.get(`http://localhost:5000/api/enrollments/user/${userInfo._id}`, config);
                 
                 // Handle both response structures
+                let enrollmentsData = [];
                 if (data.data && data.data.docs) {
                     // Paginated response
-                    setEnrollments(data.data.docs || []);
+                    enrollmentsData = data.data.docs || [];
                 } else if (data.data && Array.isArray(data.data)) {
                     // Direct array response
-                    setEnrollments(data.data || []);
+                    enrollmentsData = data.data || [];
                 } else if (data.enrollments) {
                     // Legacy response structure
-                    setEnrollments(data.enrollments || []);
+                    enrollmentsData = data.enrollments || [];
+                }
+                
+                setEnrollments(enrollmentsData);
+                
+                // Cache the enrollments data for offline viewing
+                cacheUserEnrollments(enrollmentsData);
+            } catch (err) {
+                console.error('Error fetching enrollments:', err);
+                // Try to use cached data if API fails
+                const cachedEnrollments = getCachedUserEnrollments();
+                if (cachedEnrollments) {
+                    setEnrollments(cachedEnrollments);
                 } else {
                     setEnrollments([]);
                 }
-            } catch (err) {
-                console.error('Error fetching enrollments:', err);
-                // Don't show error for enrollments, just log it
             } finally {
                 setEnrollmentsLoading(false);
             }
@@ -234,27 +302,54 @@ export default function Profile() {
                 setEnrollmentsLoading(true);
                 try {
                     const userInfo = JSON.parse(localStorage.getItem('userInfo'));
+                    
+                    // Check if user is logged in
+                    if (!userInfo || !userInfo.token) {
+                        // User is not logged in, try to get cached enrollments
+                        const cachedEnrollments = getCachedUserEnrollments();
+                        if (cachedEnrollments) {
+                            try {
+                                const cachedData = JSON.parse(cachedEnrollments);
+                                setEnrollments(cachedData);
+                            } catch (err) {
+                                console.error('Error parsing cached enrollments:', err);
+                            }
+                        }
+                        setEnrollmentsLoading(false);
+                        return;
+                    }
+
                     const config = {
                         headers: {
                             Authorization: `Bearer ${userInfo.token}`,
                         },
                     };
                     const { data } = await axios.get(`http://localhost:5000/api/enrollments/user/${userInfo._id}`, config);
+                    
                     // Handle both response structures
+                    let enrollmentsData = [];
                     if (data.data && data.data.docs) {
                         // Paginated response
-                        setEnrollments(data.data.docs || []);
+                        enrollmentsData = data.data.docs || [];
                     } else if (data.data && Array.isArray(data.data)) {
                         // Direct array response
-                        setEnrollments(data.data || []);
+                        enrollmentsData = data.data || [];
                     } else if (data.enrollments) {
                         // Legacy response structure
-                        setEnrollments(data.enrollments || []);
-                    } else {
-                        setEnrollments([]);
+                        enrollmentsData = data.enrollments || [];
                     }
+                    
+                    setEnrollments(enrollmentsData);
+                    
+                    // Cache the updated enrollments data
+                    cacheUserEnrollments(enrollmentsData);
                 } catch (err) {
                     console.error('Error fetching enrollments:', err);
+                    // Try to use cached data if API fails
+                    const cachedEnrollments = getCachedUserEnrollments();
+                    if (cachedEnrollments) {
+                        setEnrollments(cachedEnrollments);
+                    }
                 } finally {
                     setEnrollmentsLoading(false);
                 }
@@ -305,6 +400,19 @@ export default function Profile() {
     try {
         return (
             <div className="bg-surface rounded-2xl shadow-lg p-8">
+            {/* Offline Mode Indicator */}
+            {isOfflineMode && (
+                <div className="mb-6 p-4 bg-yellow-100 border border-yellow-400 rounded-lg">
+                    <div className="flex items-center">
+                        <div className="text-yellow-600 text-2xl mr-3">📱</div>
+                        <div>
+                            <h3 className="font-bold text-yellow-800">Offline Mode</h3>
+                            <p className="text-sm text-yellow-700">You're viewing cached data. Some features may be limited. Please log in to access all features.</p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Success Message */}
             {showSuccessMessage && (
                 <div className="mb-6 p-4 bg-green-100 border border-green-400 rounded-lg">

@@ -116,7 +116,9 @@ const CoachDashboard = () => {
 
   const handleLogout = () => {
     if (window.confirm('Are you sure you want to logout?')) {
+      // Only remove the authentication token, keep cached data for offline viewing
       localStorage.removeItem('userInfo');
+      // Note: We keep 'cachedUserProfile' and 'cachedUserEnrollments' for offline viewing
       navigate('/login');
     }
   };
