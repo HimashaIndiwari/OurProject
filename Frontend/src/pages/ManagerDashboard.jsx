@@ -28,7 +28,9 @@ import {
   Menu,
   X,
   UserCheck,
-  UserX
+  UserX,
+  DollarSign,
+  Download
 } from 'lucide-react';
 import axios from 'axios';
 
@@ -65,7 +67,6 @@ const ManagerDashboard = () => {
     duration: '',
     coach: '',
     category: '',
-    specialization: '',
     difficulty: 'beginner',
     totalSessions: 10,
     maxParticipants: 20,
@@ -86,7 +87,8 @@ const ManagerDashboard = () => {
     email: '',
     experience: '',
     specializations: [],
-    isActive: true
+    isActive: true,
+    hourlyRate: 0
   });
   const [availabilityForm, setAvailabilityForm] = useState({
     day: '',
@@ -327,7 +329,15 @@ const ManagerDashboard = () => {
       alert('Program created successfully!');
     } catch (error) {
       console.error('Error creating program:', error);
-      // For development, add to local state even if API fails
+      
+      // Handle backend validation errors
+      if (error.response && error.response.status === 400 && error.response.data.errors) {
+        const errorMessages = error.response.data.errors.join('\n');
+        alert('Validation failed:\n' + errorMessages);
+        return; // Don't create locally if validation fails
+      }
+      
+      // For other errors, add to local state as fallback
       const selectedCoach = coaches.find(c => c._id === programForm.coach);
       const newProgram = {
         _id: `program_${Date.now()}`,
@@ -367,7 +377,15 @@ const ManagerDashboard = () => {
       alert('Program updated successfully!');
     } catch (error) {
       console.error('Error updating program:', error);
-      // For development, update local state even if API fails
+      
+      // Handle backend validation errors
+      if (error.response && error.response.status === 400 && error.response.data.errors) {
+        const errorMessages = error.response.data.errors.join('\n');
+        alert('Validation failed:\n' + errorMessages);
+        return; // Don't update locally if validation fails
+      }
+      
+      // For other errors, update local state as fallback
       const newCoach = coaches.find(c => c._id === programForm.coach);
       const oldCoach = selectedProgram.coach;
       
@@ -647,7 +665,6 @@ const ManagerDashboard = () => {
       duration: '',
       coach: '',
       category: '',
-      specialization: '',
       difficulty: 'beginner',
       totalSessions: 10,
       maxParticipants: 20,
@@ -707,7 +724,6 @@ const ManagerDashboard = () => {
         duration: program.duration,
         coach: program.coach?._id || '',
         category: program.category,
-        specialization: program.specialization,
         difficulty: program.difficulty,
         totalSessions: program.totalSessions,
         maxParticipants: program.maxParticipants,
@@ -735,7 +751,8 @@ const ManagerDashboard = () => {
       email: coach.userId?.email || '',
       experience: coach.experience || '',
       specializations: [...(coach.specializations || [])], // Ensure it's a new array
-      isActive: coach.isActive !== false
+      isActive: coach.isActive !== false,
+      hourlyRate: coach.hourlyRate || 0
     });
     setShowEditCoachModal(true);
   };
@@ -744,6 +761,7 @@ const ManagerDashboard = () => {
     e.preventDefault();
     
     const coachId = selectedCoach._id;
+    
     
     // Show loading state
     const submitButton = e.target.querySelector('button[type="submit"]');
@@ -759,6 +777,7 @@ const ManagerDashboard = () => {
       experience: parseInt(coachForm.experience) || 0,
       specializations: coachForm.specializations || [],
       isActive: coachForm.isActive,
+      hourlyRate: parseFloat(coachForm.hourlyRate) || 0,
       userId: {
         ...selectedCoach.userId,
         firstName: coachForm.firstName,
@@ -773,6 +792,7 @@ const ManagerDashboard = () => {
         experience: updatedCoach.experience,
         specializations: updatedCoach.specializations,
         isActive: updatedCoach.isActive,
+        hourlyRate: updatedCoach.hourlyRate,
         userId: updatedCoach.userId
       });
       
@@ -805,7 +825,14 @@ const ManagerDashboard = () => {
       }
     } catch (error) {
       console.error('Coach update error:', error);
-      alert('Failed to update coach. Please try again.');
+      
+      // Handle backend validation errors
+      if (error.response && error.response.status === 400 && error.response.data.errors) {
+        const errorMessages = error.response.data.errors.join('\n');
+        alert('Validation failed:\n' + errorMessages);
+      } else {
+        alert('Failed to update coach. Please try again.');
+      }
     } finally {
       // Restore button state
       if (submitButton) {
@@ -822,7 +849,8 @@ const ManagerDashboard = () => {
       email: '',
       experience: '',
       specializations: [],
-      isActive: true
+      isActive: true,
+      hourlyRate: 0
     });
   };
 
@@ -993,6 +1021,7 @@ const ManagerDashboard = () => {
     }
   };
 
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -1038,6 +1067,7 @@ const ManagerDashboard = () => {
               { id: 'coaches', label: 'Coaches', icon: Users },
               { id: 'programs', label: 'Programs', icon: BookOpen },
               { id: 'sessions', label: 'Sessions', icon: Calendar },
+              { id: 'payroll', label: 'Payroll', icon: DollarSign },
               { id: 'reports', label: 'Reports', icon: BarChart3 }
             ].map(tab => (
               <button
@@ -1105,6 +1135,7 @@ const ManagerDashboard = () => {
             />
           )}
           {activeTab === 'coaches' && <CoachesTab coaches={coaches} programs={programs} onRefresh={handleRefresh} onViewDetails={openCoachDetailsModal} />}
+          {activeTab === 'payroll' && <PayrollTab coaches={coaches} />}
           {activeTab === 'sessions' && (
             <SessionsTab 
               sessions={sessions} 
@@ -1226,6 +1257,7 @@ const ManagerDashboard = () => {
           }}
         />
       )}
+
     </div>
   );
 };
@@ -2371,8 +2403,7 @@ const SessionsTab = ({ sessions, onReschedule, coaches, programs, onSessionsRefr
   const sessionStats = {
     total: sessions.length,
     scheduled: sessions.filter(s => s.status === 'scheduled').length,
-    inProgress: sessions.filter(s => s.status === 'in-progress').length,
-    completed: sessions.filter(s => s.status === 'completed').length,
+    rescheduled: sessions.filter(s => s.status === 'rescheduled').length,
     cancelled: sessions.filter(s => s.status === 'cancelled').length,
     attendanceMarked: sessions.filter(s => {
       const sessionDate = new Date(s.scheduledDate);
@@ -2410,7 +2441,7 @@ const SessionsTab = ({ sessions, onReschedule, coaches, programs, onSessionsRefr
       </div>
 
       {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <div className="bg-white rounded-lg shadow p-4">
           <div className="flex items-center">
             <Calendar className="h-8 w-8 text-blue-600" />
@@ -2431,19 +2462,10 @@ const SessionsTab = ({ sessions, onReschedule, coaches, programs, onSessionsRefr
         </div>
         <div className="bg-white rounded-lg shadow p-4">
           <div className="flex items-center">
-            <Star className="h-8 w-8 text-yellow-600" />
+            <RefreshCw className="h-8 w-8 text-orange-600" />
             <div className="ml-3">
-              <p className="text-sm font-medium text-gray-500">In Progress</p>
-              <p className="text-2xl font-bold text-yellow-600">{sessionStats.inProgress}</p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4">
-          <div className="flex items-center">
-            <Award className="h-8 w-8 text-green-600" />
-            <div className="ml-3">
-              <p className="text-sm font-medium text-gray-500">Completed</p>
-              <p className="text-2xl font-bold text-green-600">{sessionStats.completed}</p>
+              <p className="text-sm font-medium text-gray-500">Rescheduled</p>
+              <p className="text-2xl font-bold text-orange-600">{sessionStats.rescheduled}</p>
             </div>
           </div>
         </div>
@@ -2725,21 +2747,14 @@ const SessionsTab = ({ sessions, onReschedule, coaches, programs, onSessionsRefr
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <div className="flex space-x-2">
-                        <button
-                          onClick={() => onReschedule(session)}
-                          className="text-orange-600 hover:text-orange-900"
-                          title="Reassign Session Coach"
-                        >
-                          <RefreshCw className="h-4 w-4" />
-                        </button>
-                        <button
-                          className="text-blue-600 hover:text-blue-900"
-                          title="View Details"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </button>
-                      </div>
+                      <button
+                        onClick={() => onReschedule(session)}
+                        className="flex items-center px-3 py-1.5 text-sm bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors"
+                        title="Reassign Session Coach"
+                      >
+                        <RefreshCw className="h-4 w-4 mr-1" />
+                        Reschedule
+                      </button>
                     </td>
                   </tr>
                 ))
@@ -2792,7 +2807,6 @@ const ProgramModal = ({ program, form, setForm, coaches, onSubmit, onClose }) =>
                 value={form.title}
                 onChange={(e) => setForm({...form, title: e.target.value})}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
               />
             </div>
             <div>
@@ -2801,7 +2815,6 @@ const ProgramModal = ({ program, form, setForm, coaches, onSubmit, onClose }) =>
                 value={form.category}
                 onChange={(e) => setForm({...form, category: e.target.value})}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
               >
                 <option value="">Select a category</option>
                 <option value="Batting">Batting</option>
@@ -2870,7 +2883,6 @@ const ProgramModal = ({ program, form, setForm, coaches, onSubmit, onClose }) =>
                 value={form.coach}
                 onChange={(e) => setForm({...form, coach: e.target.value})}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
               >
                 <option value="">Select a coach</option>
                 {coaches.map(coach => (
@@ -2879,38 +2891,6 @@ const ProgramModal = ({ program, form, setForm, coaches, onSubmit, onClose }) =>
                     {coach.specializations?.length > 0 && ` (${coach.specializations.slice(0, 2).join(', ')})`}
                   </option>
                 ))}
-              </select>
-              {program && program.coach && (
-                <p className="text-sm text-gray-500 mt-1">
-                  Current: {program.coach.userId?.firstName} {program.coach.userId?.lastName}
-                </p>
-              )}
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Specialization</label>
-              <select
-                value={form.specialization}
-                onChange={(e) => setForm({...form, specialization: e.target.value})}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
-              >
-                <option value="">Select specialization</option>
-                <option value="Fast Bowling">Fast Bowling</option>
-                <option value="Spin Bowling">Spin Bowling</option>
-                <option value="Medium Pace">Medium Pace</option>
-                <option value="Opening Batting">Opening Batting</option>
-                <option value="Middle Order">Middle Order</option>
-                <option value="Lower Order">Lower Order</option>
-                <option value="Power Hitting">Power Hitting</option>
-                <option value="Defensive Batting">Defensive Batting</option>
-                <option value="Close Fielding">Close Fielding</option>
-                <option value="Outfield">Outfield</option>
-                <option value="Slip Catching">Slip Catching</option>
-                <option value="Wicket Keeping">Wicket Keeping</option>
-                <option value="Captaincy">Captaincy</option>
-                <option value="Umpiring">Umpiring</option>
-                <option value="Coaching">Coaching</option>
-                <option value="General">General</option>
               </select>
             </div>
             <div>
@@ -3414,6 +3394,12 @@ const CoachDetailsModal = ({ coach, programs, onEdit, onManageAvailability, onCl
                   <span className="font-medium">{assignedPrograms.length}</span>
                 </div>
                 <div className="flex justify-between">
+                  <span className="text-gray-600">Hourly Rate:</span>
+                  <span className="font-medium">
+                    {coach.hourlyRate && coach.hourlyRate > 0 ? `LKR ${coach.hourlyRate}` : 'Not set'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
                   <span className="text-gray-600">Status:</span>
                   <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
                     coach.isActive !== false ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
@@ -3615,48 +3601,54 @@ const EditCoachModal = ({ coach, form, setForm, onSubmit, onClose }) => {
           {/* Personal Information */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">First Name</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">First Name <span className="text-red-500">*</span></label>
               <input
                 type="text"
                 value={form.firstName}
                 onChange={(e) => setForm({...form, firstName: e.target.value})}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Last Name <span className="text-red-500">*</span></label>
               <input
                 type="text"
                 value={form.lastName}
                 onChange={(e) => setForm({...form, lastName: e.target.value})}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email <span className="text-red-500">*</span></label>
             <input
               type="email"
               value={form.email}
               onChange={(e) => setForm({...form, email: e.target.value})}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              required
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Years of Experience</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Years of Experience <span className="text-red-500">*</span></label>
             <input
               type="number"
-              min="0"
-              max="50"
               value={form.experience}
               onChange={(e) => setForm({...form, experience: e.target.value})}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Hourly Rate (LKR) <span className="text-red-500">*</span></label>
+            <input
+              type="number"
+              step="0.01"
+              value={form.hourlyRate}
+              onChange={(e) => setForm({...form, hourlyRate: parseFloat(e.target.value) || 0})}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Enter hourly rate"
             />
           </div>
 
@@ -3897,5 +3889,478 @@ const AvailabilityModal = ({
     </div>
   );
 };
+
+// Payroll Tab Component
+const PayrollTab = ({ coaches }) => {
+  const [payrollData, setPayrollData] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [selectedCoach, setSelectedCoach] = useState('');
+
+  // Set default date range (current month)
+  useEffect(() => {
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    
+    setStartDate(firstDay.toISOString().split('T')[0]);
+    setEndDate(lastDay.toISOString().split('T')[0]);
+  }, []);
+
+  // Fetch payroll data when dates change
+  useEffect(() => {
+    if (startDate && endDate) {
+      fetchPayrollData();
+    }
+  }, [startDate, endDate, selectedCoach]);
+
+  const fetchPayrollData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const userInfo = JSON.parse(localStorage.getItem('userInfo'));
+      if (!userInfo || !userInfo.token) {
+        throw new Error('No authentication token found');
+      }
+
+      const config = {
+        headers: {
+          Authorization: `Bearer ${userInfo.token}`,
+        },
+      };
+
+      const params = new URLSearchParams({
+        startDate,
+        endDate,
+        page: 1,
+        limit: 50
+      });
+
+      if (selectedCoach) {
+        params.append('coachId', selectedCoach);
+      }
+
+      const response = await axios.get(`http://localhost:5000/api/coaches/payroll?${params}`, config);
+      
+      if (response.data.success) {
+        setPayrollData(response.data.data.payrollData || []);
+      } else {
+        throw new Error(response.data.message || 'Failed to fetch payroll data');
+      }
+    } catch (err) {
+      console.error('Error fetching payroll data:', err);
+      setError(err.message);
+      // Use mock data for development
+      setPayrollData([
+        {
+          coach: {
+            _id: 'coach1',
+            userId: { firstName: 'John', lastName: 'Smith', email: 'john.smith@example.com' },
+            hourlyRate: 50,
+            specializations: ['Batting', 'Bowling'],
+            experience: 5
+          },
+          payroll: {
+            totalHours: 40,
+            totalSessions: 20,
+            completedSessions: 18,
+            completionRate: 90,
+            hourlyRate: 50,
+            totalPayroll: 2000
+          }
+        },
+        {
+          coach: {
+            _id: 'coach2',
+            userId: { firstName: 'Sarah', lastName: 'Johnson', email: 'sarah.johnson@example.com' },
+            hourlyRate: 60,
+            specializations: ['Fielding', 'Wicket Keeping'],
+            experience: 8
+          },
+          payroll: {
+            totalHours: 35,
+            totalSessions: 15,
+            completedSessions: 15,
+            completionRate: 100,
+            hourlyRate: 60,
+            totalPayroll: 2100
+          }
+        }
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
+  const calculateTotalPayroll = () => {
+    return payrollData.reduce((total, item) => total + item.payroll.totalPayroll, 0);
+  };
+
+  const calculateTotalHours = () => {
+    return payrollData.reduce((total, item) => total + item.payroll.totalHours, 0);
+  };
+
+  const calculateTotalSessions = () => {
+    return payrollData.reduce((total, item) => total + item.payroll.totalSessions, 0);
+  };
+
+  const exportPayrollData = () => {
+    if (payrollData.length === 0) {
+      alert('No payroll data to export');
+      return;
+    }
+
+    // Create CSV content
+    const headers = [
+      'Coach Name',
+      'Email',
+      'Hourly Rate',
+      'Total Hours',
+      'Total Sessions',
+      'Total Payroll',
+      'Payment Status',
+      'Payment Date'
+    ];
+
+    const csvContent = [
+      headers.join(','),
+      ...payrollData.map(item => [
+        `"${item.coach.userId?.firstName} ${item.coach.userId?.lastName}"`,
+        `"${item.coach.userId?.email}"`,
+        item.coach.hourlyRate,
+        item.payroll.totalHours,
+        item.payroll.totalSessions,
+        item.payroll.totalPayroll,
+        item.paymentStatus,
+        item.paymentDate ? new Date(item.paymentDate).toLocaleDateString() : ''
+      ].join(','))
+    ].join('\n');
+
+    // Create and download file
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    
+    // Generate filename with date range
+    const startDateStr = new Date(startDate).toLocaleDateString('en-CA');
+    const endDateStr = new Date(endDate).toLocaleDateString('en-CA');
+    const filename = `coach-payroll-${startDateStr}-to-${endDateStr}.csv`;
+    
+    link.setAttribute('download', filename);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const togglePaymentStatus = async (payrollItem) => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const userInfo = JSON.parse(localStorage.getItem('userInfo'));
+      if (!userInfo || !userInfo.token) {
+        throw new Error('No authentication token found');
+      }
+
+      const config = {
+        headers: {
+          Authorization: `Bearer ${userInfo.token}`,
+        },
+      };
+
+      const newStatus = payrollItem.paymentStatus === 'paid' ? 'pending' : 'paid';
+      
+      // If there's no payrollId, create a new payroll record first
+      if (!payrollItem.payrollId) {
+        const createResponse = await axios.post(
+          `http://localhost:5000/api/coaches/${payrollItem.coach._id}/payroll`,
+          {
+            period: payrollItem.period,
+            payroll: payrollItem.payroll,
+            paymentStatus: newStatus,
+            paymentMethod: 'bank_transfer',
+            paymentNotes: ''
+          },
+          config
+        );
+
+        if (createResponse.data.success) {
+          // Refresh payroll data
+          await fetchPayrollData();
+          alert(`Payment status updated to ${newStatus}`);
+        } else {
+          throw new Error(createResponse.data.message || 'Failed to update payment status');
+        }
+      } else {
+        // Update existing payroll record
+        const updateResponse = await axios.put(
+          `http://localhost:5000/api/coaches/${payrollItem.coach._id}/payroll/${payrollItem.payrollId}/payment-status`,
+          {
+            paymentStatus: newStatus,
+            paymentMethod: 'bank_transfer',
+            paymentNotes: ''
+          },
+          config
+        );
+
+        if (updateResponse.data.success) {
+          // Refresh payroll data
+          await fetchPayrollData();
+          alert(`Payment status updated to ${newStatus}`);
+        } else {
+          throw new Error(updateResponse.data.message || 'Failed to update payment status');
+        }
+      }
+    } catch (err) {
+      console.error('Error updating payment status:', err);
+      setError(err.message);
+      alert(`Error updating payment status: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Coach Payroll</h1>
+          <p className="text-gray-600">Calculate and manage coach payments based on sessions</p>
+        </div>
+        <div className="flex space-x-3">
+          <button
+            onClick={exportPayrollData}
+            disabled={loading || payrollData.length === 0}
+            className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+          >
+            <Download className="h-4 w-4" />
+            <span>Export CSV</span>
+          </button>
+          <button
+            onClick={fetchPayrollData}
+            disabled={loading}
+            className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            <span>Refresh</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="bg-white rounded-lg shadow p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Filters</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Start Date</label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">End Date</label>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Coach</label>
+            <select
+              value={selectedCoach}
+              onChange={(e) => setSelectedCoach(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">All Coaches</option>
+              {coaches.map(coach => (
+                <option key={coach._id} value={coach._id}>
+                  {coach.userId?.firstName} {coach.userId?.lastName}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex items-center">
+            <div className="p-2 bg-blue-100 rounded-lg">
+              <DollarSign className="h-6 w-6 text-blue-600" />
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-600">Total Payroll</p>
+              <p className="text-2xl font-bold text-gray-900">${calculateTotalPayroll().toLocaleString()}</p>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex items-center">
+            <div className="p-2 bg-green-100 rounded-lg">
+              <Clock className="h-6 w-6 text-green-600" />
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-600">Total Hours</p>
+              <p className="text-2xl font-bold text-gray-900">{calculateTotalHours().toFixed(1)}</p>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex items-center">
+            <div className="p-2 bg-purple-100 rounded-lg">
+              <Calendar className="h-6 w-6 text-purple-600" />
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-600">Total Sessions</p>
+              <p className="text-2xl font-bold text-gray-900">{calculateTotalSessions()}</p>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex items-center">
+            <div className="p-2 bg-orange-100 rounded-lg">
+              <Users className="h-6 w-6 text-orange-600" />
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-600">Active Coaches</p>
+              <p className="text-2xl font-bold text-gray-900">{payrollData.length}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Error Message */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-md p-4">
+          <div className="flex">
+            <AlertCircle className="h-5 w-5 text-red-400" />
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-red-800">Error</h3>
+              <p className="text-sm text-red-700 mt-1">{error}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payroll Table */}
+      <div className="bg-white rounded-lg shadow overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <h3 className="text-lg font-semibold text-gray-900">Coach Payroll Details</h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Coach
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Hourly Rate
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Hours
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Sessions
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Total Payroll
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Payment Status
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {loading ? (
+                <tr>
+                  <td colSpan="7" className="px-6 py-4 text-center">
+                    <div className="flex items-center justify-center">
+                      <RefreshCw className="h-5 w-5 animate-spin mr-2" />
+                      Loading payroll data...
+                    </div>
+                  </td>
+                </tr>
+              ) : payrollData.length === 0 ? (
+                <tr>
+                  <td colSpan="7" className="px-6 py-4 text-center text-gray-500">
+                    No payroll data found for the selected period
+                  </td>
+                </tr>
+              ) : (
+                payrollData.map((item) => (
+                  <tr key={item.coach._id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center">
+                        <div className="flex-shrink-0 h-10 w-10">
+                          <div className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                            <span className="text-white font-medium text-sm">
+                              {item.coach.userId?.firstName?.charAt(0)}{item.coach.userId?.lastName?.charAt(0)}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="ml-4">
+                          <div className="text-sm font-medium text-gray-900">
+                            {item.coach.userId?.firstName} {item.coach.userId?.lastName}
+                          </div>
+                          <div className="text-sm text-gray-500">{item.coach.userId?.email}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      ${item.coach.hourlyRate}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {item.payroll.totalHours}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {item.payroll.totalSessions}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                      ${item.payroll.totalPayroll.toLocaleString()}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <button
+                        onClick={() => togglePaymentStatus(item)}
+                        className={`px-3 py-1 text-sm font-medium rounded-full transition-colors ${
+                          item.paymentStatus === 'paid' 
+                            ? 'bg-green-100 text-green-800 hover:bg-green-200' 
+                            : 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'
+                        }`}
+                      >
+                        {item.paymentStatus === 'paid' ? '✓ Paid' : '⏳ Pending'}
+                      </button>
+                      {item.paymentDate && (
+                        <div className="text-xs text-gray-500 mt-1">
+                          {new Date(item.paymentDate).toLocaleDateString()}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  );
+};
+
+
 
 export default ManagerDashboard;
