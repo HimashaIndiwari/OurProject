@@ -10,6 +10,7 @@ const getCoachingPrograms = async (req, res) => {
       page = 1,
       limit = 10,
       category,
+      specialization,
       coach,
       isActive = true,
       difficulty,
@@ -21,6 +22,7 @@ const getCoachingPrograms = async (req, res) => {
     const filter = { isActive };
     
     if (category) filter.category = category;
+    if (specialization) filter.specialization = specialization;
     if (coach) filter.coach = coach;
     if (difficulty) filter.difficulty = difficulty;
 
@@ -38,7 +40,7 @@ const getCoachingPrograms = async (req, res) => {
             path: 'userId',
             select: 'firstName lastName email'
           },
-          select: 'specializations experience profileImage'
+          select: 'specializations experience'
         }
       ]
     };
@@ -55,7 +57,7 @@ const getCoachingPrograms = async (req, res) => {
           path: 'userId',
           select: 'firstName lastName email'
         },
-        select: 'specializations experience profileImage'
+        select: 'specializations experience'
       });
 
     // Transform programs to match frontend expectations
@@ -77,8 +79,7 @@ const getCoachingPrograms = async (req, res) => {
         _id: program.coach._id,
         userId: program.coach.userId,
         specializations: program.coach.specializations || [],
-        experience: program.coach.experience || 'Not specified',
-        profileImage: program.coach.profileImage || null
+        experience: program.coach.experience || 'Not specified'
       } : null
     }));
 
@@ -155,8 +156,7 @@ const getCoachingProgram = async (req, res) => {
         _id: program.coach._id,
         userId: program.coach.userId,
         specializations: program.coach.specializations || [],
-        experience: program.coach.experience || 'Not specified',
-        profileImage: program.coach.profileImage || null
+        experience: program.coach.experience || 'Not specified'
       } : null
     };
 
@@ -186,69 +186,6 @@ const getCoachingProgram = async (req, res) => {
 // @access  Private (Coach only)
 const createCoachingProgram = async (req, res) => {
   try {
-    // Validation: Check required fields
-    const { title, category, fee, duration, coach, difficulty, maxParticipants } = req.body;
-    
-    const validationErrors = [];
-    
-    // Required field validations
-    if (!title || title.trim() === '') {
-      validationErrors.push('Title is required');
-    }
-    
-    if (!category || category.trim() === '') {
-      validationErrors.push('Category is required');
-    }
-    
-    if (!fee || fee === '' || fee === null || fee === undefined) {
-      validationErrors.push('Fee is required');
-    }
-    
-    if (!duration || duration === '' || duration === null || duration === undefined) {
-      validationErrors.push('Duration is required');
-    }
-    
-    if (!coach || coach === '' || coach === null || coach === undefined) {
-      validationErrors.push('Coach is required');
-    }
-    
-    if (!difficulty || difficulty.trim() === '') {
-      validationErrors.push('Difficulty is required');
-    }
-    
-    // Business rule validations
-    if (duration && duration <= 0) {
-      validationErrors.push('Duration must be greater than 0');
-    }
-    
-    if (fee && fee < 0) {
-      validationErrors.push('Fee cannot be negative');
-    }
-    
-    // Valid difficulty values
-    const validDifficulties = ['beginner', 'intermediate', 'advanced'];
-    if (difficulty && !validDifficulties.includes(difficulty)) {
-      validationErrors.push('Difficulty must be one of: beginner, intermediate, advanced');
-    }
-    
-    // Max participants validation
-    if (maxParticipants !== undefined && maxParticipants > 20) {
-      validationErrors.push('Maximum participants cannot be more than 20');
-    }
-    
-    if (maxParticipants !== undefined && maxParticipants <= 0) {
-      validationErrors.push('Maximum participants must be greater than 0');
-    }
-    
-    // Return validation errors if any
-    if (validationErrors.length > 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Validation failed',
-        errors: validationErrors
-      });
-    }
-
     // Use coach ID from request body (bypass auth for now)
     const programData = {
       ...req.body,
@@ -264,10 +201,10 @@ const createCoachingProgram = async (req, res) => {
     
     // IMPORTANT: Add the program to the coach's assignedPrograms array
     const Coach = (await import('../models/Coach.js')).default;
-    const coachRecord = await Coach.findById(req.body.coach);
-    if (coachRecord && !coachRecord.assignedPrograms.includes(program._id)) {
-      coachRecord.assignedPrograms.push(program._id);
-      await coachRecord.save();
+    const coach = await Coach.findById(req.body.coach);
+    if (coach && !coach.assignedPrograms.includes(program._id)) {
+      coach.assignedPrograms.push(program._id);
+      await coach.save();
     }
     
     const populatedProgram = await CoachingProgram.findById(program._id)
@@ -312,69 +249,6 @@ const updateCoachingProgram = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: 'Coaching program not found'
-      });
-    }
-
-    // Validation: Check required fields if they are being updated
-    const { title, category, fee, duration, coach, difficulty, maxParticipants } = req.body;
-    
-    const validationErrors = [];
-    
-    // Required field validations (only validate if field is provided)
-    if (title !== undefined && (!title || title.trim() === '')) {
-      validationErrors.push('Title is required');
-    }
-    
-    if (category !== undefined && (!category || category.trim() === '')) {
-      validationErrors.push('Category is required');
-    }
-    
-    if (fee !== undefined && (fee === '' || fee === null)) {
-      validationErrors.push('Fee is required');
-    }
-    
-    if (duration !== undefined && (duration === '' || duration === null)) {
-      validationErrors.push('Duration is required');
-    }
-    
-    if (coach !== undefined && (coach === '' || coach === null)) {
-      validationErrors.push('Coach is required');
-    }
-    
-    if (difficulty !== undefined && (!difficulty || difficulty.trim() === '')) {
-      validationErrors.push('Difficulty is required');
-    }
-    
-    // Business rule validations
-    if (duration !== undefined && duration <= 0) {
-      validationErrors.push('Duration must be greater than 0');
-    }
-    
-    if (fee !== undefined && fee < 0) {
-      validationErrors.push('Fee cannot be negative');
-    }
-    
-    // Valid difficulty values
-    const validDifficulties = ['beginner', 'intermediate', 'advanced'];
-    if (difficulty !== undefined && !validDifficulties.includes(difficulty)) {
-      validationErrors.push('Difficulty must be one of: beginner, intermediate, advanced');
-    }
-    
-    // Max participants validation
-    if (maxParticipants !== undefined && maxParticipants > 20) {
-      validationErrors.push('Maximum participants cannot be more than 20');
-    }
-    
-    if (maxParticipants !== undefined && maxParticipants <= 0) {
-      validationErrors.push('Maximum participants must be greater than 0');
-    }
-    
-    // Return validation errors if any
-    if (validationErrors.length > 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Validation failed',
-        errors: validationErrors
       });
     }
 
@@ -607,7 +481,7 @@ const getProgramsByCoach = async (req, res) => {
             path: 'userId',
             select: 'firstName lastName email'
           },
-          select: 'specializations experience profileImage'
+          select: 'specializations experience'
         }
       ]
     };
@@ -624,7 +498,7 @@ const getProgramsByCoach = async (req, res) => {
           path: 'userId',
           select: 'firstName lastName email'
         },
-        select: 'specializations experience profileImage'
+        select: 'specializations experience'
       });
 
     const totalDocs = await CoachingProgram.countDocuments({ coach: req.params.coachId, isActive: true });

@@ -10,15 +10,15 @@ import path from 'path';
 export const generateCertificatePDF = async (certificate) => {
   return new Promise((resolve, reject) => {
     try {
-      // Create a new PDF document with proper margins for A4 Portrait
+      // Create a new PDF document with proper margins
       const doc = new PDFDocument({
         size: 'A4',
-        layout: 'portrait',
+        layout: 'landscape',
         margins: {
-          top: 50,
-          bottom: 50,
-          left: 50,
-          right: 50
+          top: 20,
+          bottom: 20,
+          left: 20,
+          right: 20
         }
       });
 
@@ -35,230 +35,233 @@ export const generateCertificatePDF = async (certificate) => {
       const accentColor = '#3182ce';
       const lightBlue = '#e6f3ff';
 
-      // Page dimensions - A4 Portrait (in points: 72 points = 1 inch)
-      const pageWidth = 595.28;  // A4 portrait width in points
-      const pageHeight = 841.89; // A4 portrait height in points
-      const margin = 50;
-      const usableWidth = pageWidth - (margin * 2);
-      const usableHeight = pageHeight - (margin * 2);
+      // Page dimensions - A4 Landscape
+      const pageWidth = 842;  // A4 landscape width
+      const pageHeight = 595; // A4 landscape height
+      const margin = 20;
 
-      // White background
+      // Beautiful background
       doc.rect(0, 0, pageWidth, pageHeight)
-         .fill('#ffffff');
+         .fill('#f8f9fa');
 
-      // Main border - double line border
-      // Outer border
-      doc.rect(margin, margin, usableWidth, usableHeight)
-         .stroke(primaryColor, 2);
-      
-      // Inner border (8 points inset)
-      doc.rect(margin + 8, margin + 8, usableWidth - 16, usableHeight - 16)
-         .stroke(primaryColor, 1);
+      // Main border - centered
+      const borderWidth = pageWidth - (margin * 2);
+      const borderHeight = pageHeight - (margin * 2);
+      doc.rect(margin, margin, borderWidth, borderHeight)
+         .stroke(primaryColor, 3);
 
-      // Calculate vertical positions with proper spacing
-      let currentY = margin + 30;
+      // Inner border - centered
+      doc.rect(margin + 5, margin + 5, borderWidth - 30, borderHeight - 30)
+         .stroke(accentColor, 1);
 
-      // Header - Organization Name (top right)
-      doc.fontSize(12)
+      // Header - Organization Name (centered)
+      const headerY = margin + 30;
+      doc.fontSize(16)
          .fillColor(primaryColor)
-         .text('CricketXpert Coaching', margin + 20, currentY, {
-           align: 'right',
-           width: usableWidth - 40
+         .text('CricketXpert Coaching Academy', pageWidth / 2, headerY, {
+           align: 'center',
+           width: borderWidth - 40
          });
 
-      currentY += 50;
-
-      // Certificate Title with background highlight
-      const titleWidth = 380;
+      // Certificate Title with decorative background (centered)
+      const titleY = headerY + 40;
+      const titleWidth = 500;
       const titleX = (pageWidth - titleWidth) / 2;
-      const titleHeight = 35;
       
-      // Background highlight for title
-      doc.rect(titleX, currentY, titleWidth, titleHeight)
+      doc.rect(titleX, titleY, titleWidth, 45)
          .fill(lightBlue)
          .stroke(accentColor, 1);
       
       doc.fontSize(18)
          .fillColor(primaryColor)
-         .text('CERTIFICATE OF COMPLETION', titleX + 10, currentY + 9, {
+         .text('CERTIFICATE OF COMPLETION', pageWidth / 2, titleY + 12, {
            align: 'center',
            width: titleWidth - 20
          });
 
-      currentY += titleHeight + 20;
-
-      // Decorative line under title
-      const lineLength = 250;
-      doc.moveTo((pageWidth - lineLength) / 2, currentY)
-         .lineTo((pageWidth + lineLength) / 2, currentY)
+      // Decorative line (centered)
+      const lineY = titleY + 60;
+      const lineLength = 200;
+      doc.moveTo((pageWidth - lineLength) / 2, lineY)
+         .lineTo((pageWidth + lineLength) / 2, lineY)
          .stroke(accentColor, 2);
 
-      currentY += 35;
+      // Main content area (centered)
+      const contentY = lineY + 30;
+      const contentWidth = borderWidth - 40;
+      const contentX = (pageWidth - contentWidth) / 2;
 
-      // "This is to certify" text
-      doc.fontSize(14)
+      // This is to certify text (centered)
+      doc.fontSize(16)
          .fillColor(secondaryColor)
-         .text('This is to certify that', margin + 20, currentY, {
+         .text('This is to certify that', pageWidth / 2, contentY, {
            align: 'center',
-           width: usableWidth - 40
+           width: contentWidth
          });
 
-      currentY += 35;
-
-      // Student name with background highlight
+      // Student name with decorative underline (centered)
       const studentName = `${certificate.user.firstName} ${certificate.user.lastName}`;
-      const nameWidth = Math.min(Math.max(studentName.length * 10, 200), 400);
-      const nameX = (pageWidth - nameWidth) / 2;
-      const nameHeight = 32;
+      const nameY = contentY + 35;
       
-      doc.rect(nameX, currentY, nameWidth, nameHeight)
-         .fill(lightBlue)
-         .stroke(accentColor, 1);
-      
-      doc.fontSize(20)
+      doc.fontSize(22)
          .fillColor(primaryColor)
-         .text(studentName, nameX + 10, currentY + 7, {
+         .text(studentName, pageWidth / 2, nameY, {
            align: 'center',
-           width: nameWidth - 20
+           width: contentWidth
          });
-
-      currentY += nameHeight + 30;
-
-      // "has successfully completed" text
-      doc.fontSize(14)
-         .fillColor(secondaryColor)
-         .text('has successfully completed the program', margin + 20, currentY, {
-           align: 'center',
-           width: usableWidth - 40
-         });
-
-      currentY += 30;
-
-      // Program name with background highlight
-      const programName = `"${certificate.program.title}"`;
-      const programWidth = Math.min(Math.max(programName.length * 8, 250), 420);
-      const programX = (pageWidth - programWidth) / 2;
-      const programHeight = 32;
       
-      doc.rect(programX, currentY, programWidth, programHeight)
+      // Decorative underline for student name (centered)
+      const underlineY = nameY + 30;
+      const underlineLength = 250;
+      doc.moveTo((pageWidth - underlineLength) / 2, underlineY)
+         .lineTo((pageWidth + underlineLength) / 2, underlineY)
+         .stroke(accentColor, 2);
+
+      // Program completion text (centered)
+      const completionY = underlineY + 25;
+      doc.fontSize(16)
+         .fillColor(secondaryColor)
+         .text(`has successfully completed the program`, pageWidth / 2, completionY, {
+           align: 'center',
+           width: contentWidth
+         });
+
+      // Program name with decorative background (centered)
+      const programY = completionY + 30;
+      const programWidth = 500;
+      const programX = (pageWidth - programWidth) / 2;
+      
+      doc.rect(programX, programY, programWidth, 35)
          .fill(lightBlue)
          .stroke(accentColor, 1);
       
       doc.fontSize(16)
          .fillColor(accentColor)
-         .text(programName, programX + 10, currentY + 8, {
+         .text(`"${certificate.program.title}"`, pageWidth / 2, programY + 8, {
            align: 'center',
            width: programWidth - 20
          });
 
-      currentY += programHeight + 35;
-
-      // Completion date
+      // Completion details (centered)
       const completionDate = certificate.issueDate.toLocaleDateString('en-US', {
          year: 'numeric',
          month: 'long',
          day: 'numeric'
       });
 
-      doc.fontSize(12)
+      const detailsY = programY + 50;
+      doc.fontSize(14)
          .fillColor(secondaryColor)
-         .text(`Completed on: ${completionDate}`, margin + 20, currentY, {
+         .text(`Completed on: ${completionDate}`, pageWidth / 2, detailsY, {
            align: 'center',
-           width: usableWidth - 40
+           width: contentWidth
          });
 
-      currentY += 30;
-
-      // Performance details with background
+      // Performance details with decorative background (centered)
       const attendance = certificate.completionDetails.attendancePercentage;
       const grade = certificate.completionDetails.finalGrade;
-      const performanceWidth = 350;
+      const performanceY = detailsY + 30;
+      const performanceWidth = 550;
       const performanceX = (pageWidth - performanceWidth) / 2;
-      const performanceHeight = 25;
       
-      doc.rect(performanceX, currentY, performanceWidth, performanceHeight)
+      doc.rect(performanceX, performanceY, performanceWidth, 30)
          .fill('#f0f8ff')
          .stroke(accentColor, 1);
       
-      doc.fontSize(12)
+      doc.fontSize(14)
          .fillColor(primaryColor)
-         .text(`Attendance: ${attendance}% | Final Grade: ${grade}`, performanceX + 10, currentY + 6, {
+         .text(`Attendance: ${attendance}% | Final Grade: ${grade}`, pageWidth / 2, performanceY + 8, {
            align: 'center',
            width: performanceWidth - 20
          });
 
-      currentY += performanceHeight + 50;
+      // Bottom section - ALL CENTERED
+      const bottomY = performanceY + 60;
 
-      // Bottom section with signatures
-      // Coach signature section (left side)
+      // Coach signature (CENTERED)
       let coachName = 'Head Coach';
       if (certificate.coach && certificate.coach.userId) {
         coachName = `${certificate.coach.userId.firstName} ${certificate.coach.userId.lastName}`;
       }
       
-      const leftSignatureX = margin + 70;
+      const signatureY = bottomY + 20;
       
-      doc.fontSize(11)
+      doc.fontSize(12)
          .fillColor(secondaryColor)
-         .text('Coach Signature:', leftSignatureX, currentY, {
-           align: 'left',
-           width: 150
+         .text('Coach Signature:', pageWidth / 2, signatureY, {
+           align: 'center',
+           width: contentWidth
          });
 
-      // Signature line
-      doc.moveTo(leftSignatureX, currentY + 18)
-         .lineTo(leftSignatureX + 130, currentY + 18)
+      doc.moveTo(pageWidth / 2 - 50, signatureY + 20)
+         .lineTo(pageWidth / 2 + 50, signatureY + 20)
          .stroke(accentColor, 1);
 
-      doc.fontSize(12)
+      doc.fontSize(14)
          .fillColor(primaryColor)
-         .text(coachName, leftSignatureX, currentY + 23, {
-           align: 'left',
-           width: 130
+         .text(coachName, pageWidth / 2, signatureY + 25, {
+           align: 'center',
+           width: contentWidth
          });
 
-      // Official seal (right side)
-      const sealX = pageWidth - margin - 120;
-      const sealCenterX = sealX + 50;
+      // Official seal (CENTERED)
+      const sealY = signatureY + 60;
       
-      doc.circle(sealCenterX, currentY + 20, 22)
-         .stroke(primaryColor, 2);
-      
-      doc.circle(sealCenterX, currentY + 20, 22)
-         .fillOpacity(0.1)
-         .fill(lightBlue)
-         .fillOpacity(1);
+      doc.circle(pageWidth / 2, sealY + 25, 25)
+         .stroke(primaryColor, 2)
+         .fill('#f0f8ff');
       
       doc.fontSize(8)
          .fillColor(primaryColor)
-         .text('OFFICIAL', sealCenterX - 25, currentY + 14, {
+         .text('OFFICIAL', pageWidth / 2, sealY + 20, {
            align: 'center',
            width: 50
          });
       
-      doc.fontSize(7)
+      doc.fontSize(6)
          .fillColor(secondaryColor)
-         .text('SEAL', sealCenterX - 25, currentY + 24, {
+         .text('SEAL', pageWidth / 2, sealY + 30, {
            align: 'center',
            width: 50
          });
 
-      currentY += 70;
-
-      // Certificate number at bottom
-      const certWidth = 280;
+      // Certificate number (CENTERED)
+      const certY = sealY + 60;
+      const certWidth = 400;
       const certX = (pageWidth - certWidth) / 2;
-      const certHeight = 22;
-      
-      doc.rect(certX, currentY, certWidth, certHeight)
+      doc.rect(certX, certY, certWidth, 25)
          .fill('#f8f9fa')
          .stroke(accentColor, 1);
       
-      doc.fontSize(10)
+      doc.fontSize(11)
          .fillColor(primaryColor)
-         .text(`Certificate No: ${certificate.certificateNumber}`, certX + 10, currentY + 6, {
+         .text(`Certificate No: ${certificate.certificateNumber}`, pageWidth / 2, certY + 7, {
            align: 'center',
-           width: certWidth - 20
+           width: certWidth - 10
+         });
+
+      // Verification info (CENTERED)
+      const verifyY = certY + 35;
+      const verifyWidth = 500;
+      const verifyX = (pageWidth - verifyWidth) / 2;
+      doc.rect(verifyX, verifyY, verifyWidth, 25)
+         .fill('#f0f8ff')
+         .stroke(accentColor, 1);
+      
+      doc.fontSize(10)
+         .fillColor(secondaryColor)
+         .text(`Verify at: ${certificate.verificationUrl || 'www.cricketxpert.com/verify'}`, pageWidth / 2, verifyY + 7, {
+           align: 'center',
+           width: verifyWidth - 10
+         });
+
+      // Footer (CENTERED)
+      const footerY = pageHeight - margin - 15;
+      doc.fontSize(10)
+         .fillColor(secondaryColor)
+         .text('© 2024 CricketXpert Coaching Academy. All rights reserved.', pageWidth / 2, footerY, {
+           align: 'center',
+           width: contentWidth
          });
 
       // Finalize the PDF

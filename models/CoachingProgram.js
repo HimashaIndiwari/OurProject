@@ -15,6 +15,7 @@ const coachingProgramSchema = new mongoose.Schema({
     }
   ],
   category: { type: String },
+  specialization: { type: String },
   difficulty: { type: String, enum: ['beginner', 'intermediate', 'advanced'] },
   totalSessions: { type: Number, default: function() { return this.duration || 10; } },
   isActive: { type: Boolean, default: true },

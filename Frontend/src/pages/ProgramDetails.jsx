@@ -314,18 +314,10 @@ export default function ProgramDetails() {
                 
                 {/* Coach Information */}
                 <div className="flex items-center mb-6 p-4 bg-gray-50 rounded-lg">
-                  <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center mr-4 overflow-hidden">
-                    {program.coach?.profileImage ? (
-                      <img 
-                        src={`http://localhost:5000${program.coach.profileImage}`} 
-                        alt={`${program.coach?.userId?.firstName} ${program.coach?.userId?.lastName}`}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <span className="text-gray-600 text-lg font-medium">
-                        {program.coach?.userId?.firstName?.charAt(0) || 'C'}
-                      </span>
-                    )}
+                  <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center mr-4">
+                    <span className="text-gray-600 text-lg font-medium">
+                      {program.coach?.userId?.firstName?.charAt(0) || 'C'}
+                    </span>
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">Coach</p>

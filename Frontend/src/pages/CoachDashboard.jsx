@@ -28,7 +28,6 @@ import {
   BarChart3
 } from 'lucide-react';
 import axios from 'axios';
-import { getCurrentUserRole } from '../utils/getCurrentUser';
 
 const CoachDashboard = () => {
   const navigate = useNavigate();
@@ -488,6 +487,36 @@ const CoachDashboard = () => {
     setShowCustomerDetailsModal(true);
   };
 
+  const handleCleanupDuplicates = async () => {
+    if (window.confirm('Are you sure you want to clean up duplicate sessions? This action cannot be undone.')) {
+      try {
+        const userInfo = JSON.parse(localStorage.getItem('userInfo'));
+        if (!userInfo || !userInfo.token) {
+          alert('Please log in to perform cleanup');
+          return;
+        }
+
+        const config = {
+          headers: {
+            Authorization: `Bearer ${userInfo.token}`,
+          },
+        };
+
+        const response = await axios.post('http://localhost:5000/api/sessions/cleanup-duplicates', {}, config);
+        
+        if (response.data.success) {
+          alert(`Cleanup completed! Removed ${response.data.data.removedCount} duplicate sessions.`);
+          // Refresh the page to show updated data
+          window.location.reload();
+        } else {
+          alert(`Error: ${response.data.message}`);
+        }
+      } catch (error) {
+        console.error('Error during cleanup:', error);
+        alert(`Error during cleanup: ${error.response?.data?.message || error.message}`);
+      }
+    }
+  };
 
   const handleLogout = () => {
     if (window.confirm('Are you sure you want to logout?')) {
@@ -609,31 +638,7 @@ const CoachDashboard = () => {
     const filteredSessions = sessions.filter(session => {
       const matchesSearch = session.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                            session.program.title.toLowerCase().includes(searchTerm.toLowerCase());
-      
-      // Handle attendance-based filtering
-      let matchesStatus = true;
-      if (statusFilter !== 'All Status') {
-        const now = new Date();
-        const sessionDate = new Date(session.scheduledDate);
-        const isPastSession = sessionDate < now;
-        
-        if (statusFilter === 'attendance marked') {
-          // Check if any participant has attendance marked
-          matchesStatus = session.participants.some(p => p.attendanceMarkedAt || p.attended !== undefined);
-        } else if (statusFilter === 'attendance not marked') {
-          // Check if no participants have attendance marked
-          matchesStatus = !session.participants.some(p => p.attendanceMarkedAt || p.attended !== undefined) && isPastSession;
-        } else if (statusFilter === 'present') {
-          // Check if any participant is marked as present
-          matchesStatus = session.participants.some(p => p.attended === true);
-        } else if (statusFilter === 'absent') {
-          // Check if any participant is marked as absent
-          matchesStatus = session.participants.some(p => p.attended === false);
-        } else {
-          // Fallback to original status filtering
-          matchesStatus = session.status === statusFilter;
-        }
-      }
+      const matchesStatus = statusFilter === 'All Status' || session.status === statusFilter;
       
       return matchesSearch && matchesStatus;
     });
@@ -668,33 +673,11 @@ const CoachDashboard = () => {
     const filteredSessions = sessions.filter(session => {
       const matchesSearch = session.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                            session.program.title.toLowerCase().includes(searchTerm.toLowerCase());
-      
-      // Handle attendance-based filtering
-      let matchesStatus = true;
-      if (statusFilter !== 'All Status') {
-        const sessionDate = new Date(session.scheduledDate);
-        const isPastSession = sessionDate < now;
-        
-        if (statusFilter === 'attendance marked') {
-          // Check if any participant has attendance marked
-          matchesStatus = session.participants.some(p => p.attendanceMarkedAt || p.attended !== undefined);
-        } else if (statusFilter === 'attendance not marked') {
-          // Check if no participants have attendance marked
-          matchesStatus = !session.participants.some(p => p.attendanceMarkedAt || p.attended !== undefined) && isPastSession;
-        } else if (statusFilter === 'present') {
-          // Check if any participant is marked as present
-          matchesStatus = session.participants.some(p => p.attended === true);
-        } else if (statusFilter === 'absent') {
-          // Check if any participant is marked as absent
-          matchesStatus = session.participants.some(p => p.attended === false);
-        } else {
-          // Fallback to original status filtering
-          matchesStatus = session.status === statusFilter;
-        }
-      }
+      const matchesStatus = statusFilter === 'All Status' || session.status === statusFilter;
       
       // Create proper datetime comparison including session time
       const sessionDate = new Date(session.scheduledDate);
+      const now = new Date();
       
       // If session has startTime, combine date with start time for accurate comparison
       let sessionDateTime = sessionDate;
@@ -743,33 +726,11 @@ const CoachDashboard = () => {
     const filteredSessions = sessions.filter(session => {
       const matchesSearch = session.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                            session.program.title.toLowerCase().includes(searchTerm.toLowerCase());
-      
-      // Handle attendance-based filtering
-      let matchesStatus = true;
-      if (statusFilter !== 'All Status') {
-        const sessionDate = new Date(session.scheduledDate);
-        const isPastSession = sessionDate < now;
-        
-        if (statusFilter === 'attendance marked') {
-          // Check if any participant has attendance marked
-          matchesStatus = session.participants.some(p => p.attendanceMarkedAt || p.attended !== undefined);
-        } else if (statusFilter === 'attendance not marked') {
-          // Check if no participants have attendance marked
-          matchesStatus = !session.participants.some(p => p.attendanceMarkedAt || p.attended !== undefined) && isPastSession;
-        } else if (statusFilter === 'present') {
-          // Check if any participant is marked as present
-          matchesStatus = session.participants.some(p => p.attended === true);
-        } else if (statusFilter === 'absent') {
-          // Check if any participant is marked as absent
-          matchesStatus = session.participants.some(p => p.attended === false);
-        } else {
-          // Fallback to original status filtering
-          matchesStatus = session.status === statusFilter;
-        }
-      }
+      const matchesStatus = statusFilter === 'All Status' || session.status === statusFilter;
       
       // Create proper datetime comparison including session time
       const sessionDate = new Date(session.scheduledDate);
+      const now = new Date();
       
       // If session has startTime, combine date with start time for accurate comparison
       let sessionDateTime = sessionDate;
@@ -831,31 +792,7 @@ const CoachDashboard = () => {
     return coachSessions.filter(session => {
       const matchesSearch = session.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                            session.program?.title.toLowerCase().includes(searchTerm.toLowerCase());
-      
-      // Handle attendance-based filtering
-      let matchesStatus = true;
-      if (statusFilter !== 'All Status') {
-        const now = new Date();
-        const sessionDate = new Date(session.scheduledDate);
-        const isPastSession = sessionDate < now;
-        
-        if (statusFilter === 'attendance marked') {
-          // Check if any participant has attendance marked
-          matchesStatus = session.participants.some(p => p.attendanceMarkedAt || p.attended !== undefined);
-        } else if (statusFilter === 'attendance not marked') {
-          // Check if no participants have attendance marked
-          matchesStatus = !session.participants.some(p => p.attendanceMarkedAt || p.attended !== undefined) && isPastSession;
-        } else if (statusFilter === 'present') {
-          // Check if any participant is marked as present
-          matchesStatus = session.participants.some(p => p.attended === true);
-        } else if (statusFilter === 'absent') {
-          // Check if any participant is marked as absent
-          matchesStatus = session.participants.some(p => p.attended === false);
-        } else {
-          // Fallback to original status filtering
-          matchesStatus = session.status === statusFilter;
-        }
-      }
+      const matchesStatus = statusFilter === 'All Status' || session.status === statusFilter;
       
       return matchesSearch && matchesStatus;
     });
@@ -975,6 +912,12 @@ const CoachDashboard = () => {
               <Menu className="h-6 w-6" />
             </button>
             <h1 className="text-lg font-semibold text-gray-900">Coach Dashboard</h1>
+            <button
+              onClick={handleCleanupDuplicates}
+              className="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700"
+            >
+              Cleanup
+            </button>
           </div>
         </div>
 
@@ -985,6 +928,12 @@ const CoachDashboard = () => {
               <div className="mb-6">
                 <div className="flex justify-between items-center mb-4">
                   <h2 className="text-2xl font-bold text-gray-900">Coaching Programs</h2>
+                  <button
+                    onClick={handleCleanupDuplicates}
+                    className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
+                  >
+                    Cleanup Duplicates
+                  </button>
                 </div>
                 
                 {/* Filter Bar */}
@@ -1099,6 +1048,39 @@ const CoachDashboard = () => {
                     Refresh
                   </button>
                   
+                  <button
+                    onClick={async () => {
+                      try {
+                        const debugResponse = await axios.get(`http://localhost:5000/api/coaches/${coach._id}/debug-attendance`);
+                        console.log('Debug attendance data:', debugResponse.data);
+                        alert('Debug data logged to console. Check browser console for details.');
+                      } catch (error) {
+                        console.error('Error getting debug data:', error);
+                        alert('Error getting debug data');
+                      }
+                    }}
+                    className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                  >
+                    <BarChart3 className="h-4 w-4 mr-2" />
+                    Debug
+                  </button>
+                  
+                  <button
+                    onClick={async () => {
+                      try {
+                        const testResponse = await axios.get('http://localhost:5000/api/coaches/test');
+                        console.log('Backend connection test:', testResponse.data);
+                        alert('Backend is running! Check console for details.');
+                      } catch (error) {
+                        console.error('Backend connection test failed:', error);
+                        alert('Backend connection failed! Check console for details.');
+                      }
+                    }}
+                    className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Test Backend
+                  </button>
                 </div>
               </div>
               
@@ -1264,6 +1246,43 @@ const CoachDashboard = () => {
                     Refresh All Sessions
                   </button>
                   
+                  <button
+                    onClick={() => {
+                      console.log('=== CURRENT SESSION DATA DEBUG ===');
+                      console.log('Total sessions:', sessions.length);
+                      console.log('Past sessions count:', getPastSessions().length);
+                      console.log('Upcoming sessions count:', getUpcomingSessions().length);
+                      console.log('Current time:', new Date().toISOString());
+                      sessions.forEach((session, index) => {
+                        const sessionDate = new Date(session.scheduledDate);
+                        const now = new Date();
+                        
+                        // Create proper datetime with start time
+                        let sessionDateTime = sessionDate;
+                        if (session.startTime) {
+                          const [hours, minutes] = session.startTime.split(':').map(Number);
+                          sessionDateTime = new Date(sessionDate);
+                          sessionDateTime.setHours(hours, minutes, 0, 0);
+                        }
+                        
+                        console.log(`Session ${index + 1}:`, {
+                          title: session.title,
+                          scheduledDate: session.scheduledDate,
+                          startTime: session.startTime,
+                          parsedDate: sessionDate.toISOString(),
+                          sessionDateTime: sessionDateTime.toISOString(),
+                          currentTime: now.toISOString(),
+                          isPast: sessionDateTime < now,
+                          isUpcoming: sessionDateTime >= now
+                        });
+                      });
+                      console.log('=== END DEBUG ===');
+                      alert('Debug info logged to console. Check browser console for details.');
+                    }}
+                    className="flex items-center px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                  >
+                    Debug Sessions
+                  </button>
                 </div>
               </div>
               
@@ -1287,10 +1306,10 @@ const CoachDashboard = () => {
                     className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   >
                     <option value="All Status">All Status</option>
-                    <option value="attendance marked">Attendance Marked</option>
-                    <option value="attendance not marked">Attendance Not Marked</option>
-                    <option value="present">Present</option>
-                    <option value="absent">Absent</option>
+                    <option value="scheduled">Scheduled</option>
+                    <option value="in-progress">In Progress</option>
+                    <option value="completed">Completed</option>
+                    <option value="cancelled">Cancelled</option>
                   </select>
                 </div>
               </div>
@@ -2010,9 +2029,6 @@ const CoachProfileCard = ({ coach, enrolledPrograms, sessions }) => {
     hourlyRate: coach?.hourlyRate || 0,
     achievements: coach?.achievements || []
   });
-  const [profileImage, setProfileImage] = useState(null);
-  const [profileImagePreview, setProfileImagePreview] = useState(null);
-  const [uploadingImage, setUploadingImage] = useState(false);
 
   const handleEdit = () => {
     setIsEditing(true);
@@ -2025,85 +2041,17 @@ const CoachProfileCard = ({ coach, enrolledPrograms, sessions }) => {
     });
   };
 
-  const handleImageUpload = async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      alert('Please select an image file');
-      return;
-    }
-
-    // Validate file size (5MB limit)
-    if (file.size > 5 * 1024 * 1024) {
-      alert('File size must be less than 5MB');
-      return;
-    }
-
-    setProfileImage(file);
-    
-    // Create preview URL
-    const previewUrl = URL.createObjectURL(file);
-    setProfileImagePreview(previewUrl);
-  };
-
-  const uploadProfileImage = async () => {
-    if (!profileImage) return null;
-
-    setUploadingImage(true);
-    try {
-      const formData = new FormData();
-      formData.append('profileImage', profileImage);
-
-      const response = await axios.post('/api/upload', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-
-      if (response.data.filePath) {
-        return response.data.filePath;
-      }
-      throw new Error('Upload failed');
-    } catch (error) {
-      console.error('Error uploading image:', error);
-      alert('Error uploading image: ' + (error.response?.data?.message || error.message));
-      return null;
-    } finally {
-      setUploadingImage(false);
-    }
-  };
-
   const handleSave = async () => {
     try {
-      let profileImagePath = coach.profileImage; // Keep existing image if no new upload
-      
-      // Upload new image if one was selected
-      if (profileImage) {
-        const uploadedPath = await uploadProfileImage();
-        if (uploadedPath) {
-          profileImagePath = uploadedPath;
-        } else {
-          return; // Stop if upload failed
-        }
-      }
-
-      // Prepare update data
-      const updateData = {
-        ...editData,
-        profileImage: profileImagePath
-      };
       
       // Make API call to update the coach profile
-      const response = await axios.put(`http://localhost:5000/api/coaches/${coach._id}`, updateData);
+      const response = await axios.put(`/api/coaches/${coach._id}`, editData);
       
       if (response.data.success) {
         setIsEditing(false);
-        setProfileImage(null);
-        setProfileImagePreview(null);
         
         // Refresh the coach data to show updated information
+        // You might want to call fetchCoachData() here or update the local state
         alert('Profile updated successfully!');
         
         // Optionally refresh the page or update local state
@@ -2126,8 +2074,6 @@ const CoachProfileCard = ({ coach, enrolledPrograms, sessions }) => {
       hourlyRate: coach.hourlyRate || 0,
       achievements: coach.achievements || []
     });
-    setProfileImage(null);
-    setProfileImagePreview(null);
   };
 
   const addSpecialization = () => {
@@ -2176,48 +2122,8 @@ const CoachProfileCard = ({ coach, enrolledPrograms, sessions }) => {
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
       <div className="flex justify-between items-start mb-6">
         <div className="flex items-center space-x-4">
-          <div className="relative">
-            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center overflow-hidden">
-              {profileImagePreview ? (
-                <img 
-                  src={profileImagePreview} 
-                  alt="Profile Preview" 
-                  className="w-full h-full object-cover"
-                />
-              ) : coach.profileImage ? (
-                <img 
-                  src={`http://localhost:5000${coach.profileImage}`} 
-                  alt="Profile" 
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <User className="h-8 w-8 text-blue-600" />
-              )}
-            </div>
-            {isEditing && (
-              <div className="absolute -bottom-1 -right-1">
-                <label className="cursor-pointer">
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center transition-colors ${
-                    uploadingImage 
-                      ? 'bg-gray-400 cursor-not-allowed' 
-                      : 'bg-blue-600 hover:bg-blue-700'
-                  }`}>
-                    {uploadingImage ? (
-                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
-                    ) : (
-                      <Upload className="h-3 w-3 text-white" />
-                    )}
-                  </div>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleImageUpload}
-                    className="hidden"
-                    disabled={uploadingImage}
-                  />
-                </label>
-              </div>
-            )}
+          <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center">
+            <User className="h-8 w-8 text-blue-600" />
           </div>
           <div>
             <h3 className="text-2xl font-bold text-gray-900">
@@ -2322,43 +2228,20 @@ const CoachProfileCard = ({ coach, enrolledPrograms, sessions }) => {
             
             <div>
               <label className="block text-sm font-medium text-gray-700">Hourly Rate</label>
-              {(() => {
-                const userRole = getCurrentUserRole();
-                const canEditHourlyRate = ['coaching_manager', 'admin'].includes(userRole);
-                
-                if (isEditing && !canEditHourlyRate) {
-                  // Coach cannot edit hourly rate - show read-only with note
-                  return (
-                    <div>
-                      <p className="text-gray-900">
-                        {coach.hourlyRate && coach.hourlyRate > 0 ? `LKR ${coach.hourlyRate}` : 'Not set'}
-                      </p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        * Hourly rate can only be updated by coaching manager
-                      </p>
-                    </div>
-                  );
-                } else if (isEditing && canEditHourlyRate) {
-                  // Coaching manager can edit hourly rate
-                  return (
-                    <input
-                      type="number"
-                      value={editData.hourlyRate}
-                      onChange={(e) => setEditData(prev => ({ ...prev, hourlyRate: parseFloat(e.target.value) || 0 }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      min="0"
-                      step="0.01"
-                    />
-                  );
-                } else {
-                  // Read-only view
-                  return (
-                    <p className="text-gray-900">
-                      {coach.hourlyRate && coach.hourlyRate > 0 ? `LKR ${coach.hourlyRate}` : 'Not set'}
-                    </p>
-                  );
-                }
-              })()}
+              {isEditing ? (
+                <input
+                  type="number"
+                  value={editData.hourlyRate}
+                  onChange={(e) => setEditData(prev => ({ ...prev, hourlyRate: parseFloat(e.target.value) || 0 }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  min="0"
+                  step="0.01"
+                />
+              ) : (
+                <p className="text-gray-900">
+                  {coach.hourlyRate && coach.hourlyRate > 0 ? `LKR ${coach.hourlyRate}` : 'Not set'}
+                </p>
+              )}
             </div>
           </div>
         </div>

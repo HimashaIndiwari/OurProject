@@ -1,9 +1,7 @@
 import Coach from '../models/Coach.js';
 import User from '../models/User.js';
 import Session from '../models/Session.js';
-import CoachPayroll from '../models/CoachPayroll.js';
 import mongoose from 'mongoose';
-import { sendAttendanceNotificationEmail } from '../utils/wemailService.js';
 
 // Helper function for manual pagination
 const paginateHelper = async (Model, filter, options) => {
@@ -123,7 +121,7 @@ const getAllCoaches = async (req, res) => {
       populate: [
         {
           path: 'userId',
-          select: 'firstName lastName email profileImageURL role'
+          select: 'firstName lastName email profileImageURL'
         },
         {
           path: 'assignedPrograms',
@@ -152,17 +150,9 @@ const getAllCoaches = async (req, res) => {
 
     const coaches = await paginateHelper(Coach, filter, options);
 
-    // Additional safety filter: Only return coaches whose userId has role='coach'
-    // This ensures data consistency without modifying the database
-    const filteredCoaches = {
-      ...coaches,
-      docs: coaches.docs.filter(coach => coach.userId && coach.userId.role === 'coach'),
-      totalDocs: coaches.docs.filter(coach => coach.userId && coach.userId.role === 'coach').length
-    };
-
     res.status(200).json({
       success: true,
-      data: filteredCoaches
+      data: coaches
     });
   } catch (error) {
     res.status(500).json({
@@ -333,60 +323,6 @@ const updateCoach = async (req, res) => {
     console.log('Coach ID:', coachId);
     console.log('Update Data:', updateData);
 
-    // Backend validation
-    const validationErrors = [];
-
-    // Validate userId data if provided
-    if (updateData.userId && typeof updateData.userId === 'object') {
-      const { firstName, lastName, email } = updateData.userId;
-
-      // First name validation
-      if (firstName !== undefined) {
-        if (!firstName || firstName.trim() === '') {
-          validationErrors.push('First name is required');
-        }
-      }
-
-      // Last name validation
-      if (lastName !== undefined) {
-        if (!lastName || lastName.trim() === '') {
-          validationErrors.push('Last name is required');
-        }
-      }
-
-      // Email validation
-      if (email !== undefined) {
-        if (!email || email.trim() === '') {
-          validationErrors.push('Email is required');
-        } else if (!email.includes('@') || !email.includes('.')) {
-          validationErrors.push('Email must contain @ and .');
-        }
-      }
-    }
-
-    // Validate experience
-    if (updateData.experience !== undefined) {
-      if (!updateData.experience || updateData.experience <= 0) {
-        validationErrors.push('Years of experience must be greater than 0');
-      }
-    }
-
-    // Validate hourly rate
-    if (updateData.hourlyRate !== undefined) {
-      if (!updateData.hourlyRate || updateData.hourlyRate <= 0) {
-        validationErrors.push('Hourly rate must be greater than 0');
-      }
-    }
-
-    // Return validation errors if any
-    if (validationErrors.length > 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Validation failed',
-        errors: validationErrors
-      });
-    }
-
     // Remove fields that shouldn't be updated via this endpoint
     delete updateData.rating;
     delete updateData.totalReviews;
@@ -400,25 +336,13 @@ const updateCoach = async (req, res) => {
       });
     }
 
-    // Check authorization - coaches can update their own profile but cannot change hourly rate
-    // Only coaching_manager and admin can update hourly rate
-    if (req.user) {
-      const isCoachUpdatingOwnProfile = req.user.id === coach.userId.toString() && req.user.role === 'coach';
-      const isAuthorizedManager = ['coaching_manager', 'admin'].includes(req.user.role);
-      
-      if (!isCoachUpdatingOwnProfile && !isAuthorizedManager) {
-        return res.status(403).json({
-          success: false,
-          message: 'Not authorized to update this coach profile'
-        });
-      }
-      
-      // If coach is updating their own profile, remove hourly rate from update data
-      if (isCoachUpdatingOwnProfile && updateData.hasOwnProperty('hourlyRate')) {
-        console.log('Coach attempting to update hourly rate - removing from update data');
-        delete updateData.hourlyRate;
-      }
-    }
+    // Check authorization (coach can update own profile, admin can update any) - temporarily disabled for development
+    // if (req.user && req.user.id !== coach.userId.toString() && req.user.role !== 'admin') {
+    //   return res.status(403).json({
+    //     success: false,
+    //     message: 'Not authorized to update this coach profile'
+    //   });
+    // }
 
     // If userId data is provided, update the User document first
     if (updateData.userId && typeof updateData.userId === 'object') {
@@ -545,60 +469,6 @@ const getCoachesBySpecialization = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error fetching coaches by specialization',
-      error: error.message
-    });
-  }
-};
-
-// @desc    Update coach hourly rate (coaching manager only)
-// @route   PUT /api/coaches/:id/hourly-rate
-// @access  Private (Coaching Manager or Admin only)
-const updateCoachHourlyRate = async (req, res) => {
-  try {
-    const { hourlyRate } = req.body;
-    const coachId = req.params.id;
-
-    // Validate hourly rate
-    if (hourlyRate === undefined || hourlyRate === null) {
-      return res.status(400).json({
-        success: false,
-        message: 'Hourly rate is required'
-      });
-    }
-
-    if (typeof hourlyRate !== 'number' || hourlyRate < 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Hourly rate must be a positive number'
-      });
-    }
-
-    const coach = await Coach.findById(coachId);
-
-    if (!coach) {
-      return res.status(404).json({
-        success: false,
-        message: 'Coach not found'
-      });
-    }
-
-    // Update only the hourly rate
-    coach.hourlyRate = hourlyRate;
-    await coach.save();
-
-    const updatedCoach = await Coach.findById(coachId)
-      .populate('userId', 'firstName lastName email profileImageURL')
-      .populate('assignedPrograms', 'title description category specialization difficulty fee duration totalSessions isActive maxParticipants currentEnrollments');
-
-    res.status(200).json({
-      success: true,
-      data: updatedCoach,
-      message: 'Coach hourly rate updated successfully'
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error updating coach hourly rate',
       error: error.message
     });
   }
@@ -844,348 +714,6 @@ const getCoachStats = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error fetching coach statistics',
-      error: error.message
-    });
-  }
-};
-
-// @desc    Get coach payroll calculation
-// @route   GET /api/coaches/payroll
-// @access  Private (Admin or Coaching Manager)
-const getCoachPayroll = async (req, res) => {
-  try {
-    const { 
-      startDate, 
-      endDate, 
-      coachId, 
-      page = 1, 
-      limit = 10 
-    } = req.query;
-
-    // Set default date range if not provided (current month)
-    const now = new Date();
-    const defaultStartDate = new Date(now.getFullYear(), now.getMonth(), 1);
-    const defaultEndDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-
-    const start = startDate ? new Date(startDate) : defaultStartDate;
-    const end = endDate ? new Date(endDate) : defaultEndDate;
-
-    console.log('Payroll calculation for period:', start, 'to', end);
-
-    // Build filter for coaches
-    const coachFilter = { isActive: true };
-    if (coachId) {
-      coachFilter._id = coachId;
-    }
-
-    // Get all active coaches with their user details
-    const coaches = await Coach.find(coachFilter)
-      .populate('userId', 'firstName lastName email')
-      .select('_id userId hourlyRate specializations experience');
-
-    console.log(`Found ${coaches.length} coaches for payroll calculation`);
-
-    const payrollData = [];
-
-    for (const coach of coaches) {
-      try {
-        // Get all sessions for this coach in the date range
-        const sessions = await Session.find({
-          coach: coach._id,
-          scheduledDate: {
-            $gte: start,
-            $lte: end
-          },
-          status: { $in: ['completed', 'scheduled'] } // Include both completed and scheduled sessions
-        })
-        .populate('program', 'title category')
-        .populate('ground', 'name location')
-        .sort({ scheduledDate: 1 });
-
-        console.log(`Coach ${coach.userId.firstName} ${coach.userId.lastName}: Found ${sessions.length} sessions`);
-
-        // Calculate payroll for this coach
-        let totalHours = 0;
-        let totalSessions = 0;
-        let completedSessions = 0;
-        let sessionDetails = [];
-
-        sessions.forEach(session => {
-          // Calculate session duration in hours
-          const sessionHours = session.duration / 60; // Convert minutes to hours
-          totalHours += sessionHours;
-          totalSessions++;
-
-          if (session.status === 'completed') {
-            completedSessions++;
-          }
-
-          // Add session details for breakdown
-          sessionDetails.push({
-            sessionId: session._id,
-            title: session.title,
-            scheduledDate: session.scheduledDate,
-            startTime: session.startTime,
-            endTime: session.endTime,
-            duration: session.duration,
-            durationHours: sessionHours,
-            status: session.status,
-            program: session.program,
-            ground: session.ground,
-            participantsCount: session.participants.length
-          });
-        });
-
-        // Calculate payroll amount
-        const hourlyRate = coach.hourlyRate || 0;
-        const totalPayroll = totalHours * hourlyRate;
-
-        // Calculate completion rate
-        const completionRate = totalSessions > 0 ? (completedSessions / totalSessions) * 100 : 0;
-
-        // Check if there's an existing payroll record for this coach and period
-        const existingPayroll = await CoachPayroll.findOne({
-          coachId: coach._id,
-          'period.startDate': start,
-          'period.endDate': end
-        });
-
-        payrollData.push({
-          coach: {
-            _id: coach._id,
-            userId: coach.userId,
-            hourlyRate: hourlyRate,
-            specializations: coach.specializations,
-            experience: coach.experience
-          },
-          payroll: {
-            totalHours: Math.round(totalHours * 100) / 100, // Round to 2 decimal places
-            totalSessions: totalSessions,
-            completedSessions: completedSessions,
-            completionRate: Math.round(completionRate * 100) / 100,
-            hourlyRate: hourlyRate,
-            totalPayroll: Math.round(totalPayroll * 100) / 100
-          },
-          sessionDetails: sessionDetails,
-          period: {
-            startDate: start,
-            endDate: end
-          },
-          paymentStatus: existingPayroll ? existingPayroll.paymentStatus : 'pending',
-          paymentDate: existingPayroll ? existingPayroll.paymentDate : null,
-          paymentMethod: existingPayroll ? existingPayroll.paymentMethod : 'bank_transfer',
-          paymentNotes: existingPayroll ? existingPayroll.paymentNotes : '',
-          payrollId: existingPayroll ? existingPayroll._id : null
-        });
-
-      } catch (coachError) {
-        console.error(`Error calculating payroll for coach ${coach._id}:`, coachError);
-        // Continue with other coaches even if one fails
-      }
-    }
-
-    // Sort by total payroll (highest first)
-    payrollData.sort((a, b) => b.payroll.totalPayroll - a.payroll.totalPayroll);
-
-    // Apply pagination
-    const startIndex = (page - 1) * limit;
-    const endIndex = startIndex + parseInt(limit);
-    const paginatedData = payrollData.slice(startIndex, endIndex);
-
-    // Calculate summary statistics
-    const summary = {
-      totalCoaches: payrollData.length,
-      totalHours: payrollData.reduce((sum, item) => sum + item.payroll.totalHours, 0),
-      totalSessions: payrollData.reduce((sum, item) => sum + item.payroll.totalSessions, 0),
-      totalPayroll: payrollData.reduce((sum, item) => sum + item.payroll.totalPayroll, 0),
-      averageHourlyRate: payrollData.length > 0 ? 
-        payrollData.reduce((sum, item) => sum + item.coach.hourlyRate, 0) / payrollData.length : 0
-    };
-
-    res.status(200).json({
-      success: true,
-      data: {
-        payrollData: paginatedData,
-        summary: summary,
-        pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
-          total: payrollData.length,
-          totalPages: Math.ceil(payrollData.length / limit),
-          hasNextPage: endIndex < payrollData.length,
-          hasPrevPage: page > 1
-        },
-        period: {
-          startDate: start,
-          endDate: end
-        }
-      }
-    });
-
-  } catch (error) {
-    console.error('Error calculating coach payroll:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error calculating coach payroll',
-      error: error.message
-    });
-  }
-};
-
-// @desc    Get detailed payroll for a specific coach
-// @route   GET /api/coaches/:coachId/payroll-details
-// @access  Private (Admin or Coaching Manager)
-const getCoachPayrollDetails = async (req, res) => {
-  try {
-    const { coachId } = req.params;
-    const { startDate, endDate } = req.query;
-
-    // Set default date range if not provided (current month)
-    const now = new Date();
-    const defaultStartDate = new Date(now.getFullYear(), now.getMonth(), 1);
-    const defaultEndDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-
-    const start = startDate ? new Date(startDate) : defaultStartDate;
-    const end = endDate ? new Date(endDate) : defaultEndDate;
-
-    // Get coach details
-    const coach = await Coach.findById(coachId)
-      .populate('userId', 'firstName lastName email')
-      .select('_id userId hourlyRate specializations experience');
-
-    if (!coach) {
-      return res.status(404).json({
-        success: false,
-        message: 'Coach not found'
-      });
-    }
-
-    // Get all sessions for this coach in the date range
-    const sessions = await Session.find({
-      coach: coachId,
-      scheduledDate: {
-        $gte: start,
-        $lte: end
-      },
-      status: { $in: ['completed', 'scheduled'] }
-    })
-    .populate('program', 'title category description')
-    .populate('ground', 'name location')
-    .populate('participants.user', 'firstName lastName email')
-    .sort({ scheduledDate: 1 });
-
-    // Calculate detailed payroll breakdown
-    let totalHours = 0;
-    let totalSessions = 0;
-    let completedSessions = 0;
-    let sessionBreakdown = [];
-
-    sessions.forEach(session => {
-      const sessionHours = session.duration / 60;
-      totalHours += sessionHours;
-      totalSessions++;
-
-      if (session.status === 'completed') {
-        completedSessions++;
-      }
-
-      // Calculate attendance statistics for this session
-      const totalParticipants = session.participants.length;
-      const attendedParticipants = session.participants.filter(p => p.attended === true).length;
-      const attendanceRate = totalParticipants > 0 ? (attendedParticipants / totalParticipants) * 100 : 0;
-
-      sessionBreakdown.push({
-        sessionId: session._id,
-        title: session.title,
-        description: session.description,
-        scheduledDate: session.scheduledDate,
-        startTime: session.startTime,
-        endTime: session.endTime,
-        duration: session.duration,
-        durationHours: Math.round(sessionHours * 100) / 100,
-        status: session.status,
-        program: session.program,
-        ground: session.ground,
-        participants: session.participants,
-        attendanceStats: {
-          totalParticipants,
-          attendedParticipants,
-          attendanceRate: Math.round(attendanceRate * 100) / 100
-        },
-        sessionPayroll: Math.round((sessionHours * coach.hourlyRate) * 100) / 100
-      });
-    });
-
-    const totalPayroll = totalHours * coach.hourlyRate;
-    const completionRate = totalSessions > 0 ? (completedSessions / totalSessions) * 100 : 0;
-
-    // Group sessions by program for better organization
-    const sessionsByProgram = {};
-    sessionBreakdown.forEach(session => {
-      const programId = session.program._id.toString();
-      if (!sessionsByProgram[programId]) {
-        sessionsByProgram[programId] = {
-          program: session.program,
-          sessions: [],
-          totalHours: 0,
-          totalPayroll: 0
-        };
-      }
-      sessionsByProgram[programId].sessions.push(session);
-      sessionsByProgram[programId].totalHours += session.durationHours;
-      sessionsByProgram[programId].totalPayroll += session.sessionPayroll;
-    });
-
-    // Round program totals
-    Object.values(sessionsByProgram).forEach(program => {
-      program.totalHours = Math.round(program.totalHours * 100) / 100;
-      program.totalPayroll = Math.round(program.totalPayroll * 100) / 100;
-    });
-
-    // Check if there's an existing payroll record for this coach and period
-    const existingPayroll = await CoachPayroll.findOne({
-      coachId: coachId,
-      'period.startDate': start,
-      'period.endDate': end
-    });
-
-    res.status(200).json({
-      success: true,
-      data: {
-        coach: {
-          _id: coach._id,
-          userId: coach.userId,
-          hourlyRate: coach.hourlyRate,
-          specializations: coach.specializations,
-          experience: coach.experience
-        },
-        payroll: {
-          totalHours: Math.round(totalHours * 100) / 100,
-          totalSessions: totalSessions,
-          completedSessions: completedSessions,
-          completionRate: Math.round(completionRate * 100) / 100,
-          hourlyRate: coach.hourlyRate,
-          totalPayroll: Math.round(totalPayroll * 100) / 100
-        },
-        sessionsByProgram: Object.values(sessionsByProgram),
-        sessionBreakdown: sessionBreakdown,
-        period: {
-          startDate: start,
-          endDate: end
-        },
-        paymentStatus: existingPayroll ? existingPayroll.paymentStatus : 'pending',
-        paymentDate: existingPayroll ? existingPayroll.paymentDate : null,
-        paymentMethod: existingPayroll ? existingPayroll.paymentMethod : 'bank_transfer',
-        paymentNotes: existingPayroll ? existingPayroll.paymentNotes : '',
-        payrollId: existingPayroll ? existingPayroll._id : null
-      }
-    });
-
-  } catch (error) {
-    console.error('Error fetching coach payroll details:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching coach payroll details',
       error: error.message
     });
   }
@@ -1891,71 +1419,6 @@ const markSessionAttendance = async (req, res) => {
     
     console.log(`Successfully updated ${updatedCount} participants`);
     
-    // Send email notifications to customers
-    try {
-      console.log('📧 Sending attendance notification emails...');
-      
-      // Get coach details
-      const coach = await User.findById(coachId);
-      const coachName = coach?.firstName ? `${coach.firstName} ${coach.lastName || ''}` : 'Your Coach';
-      
-      // Get customer details for email notifications
-      // First, get the actual user IDs from the session participants
-      const participantIds = [...new Set(attendanceData.map(item => item.participantId))];
-      const sessionParticipants = session.participants.filter(p => 
-        participantIds.includes(p._id.toString())
-      );
-      
-      // Extract user IDs from participants
-      const userIds = sessionParticipants.map(p => p.user.toString());
-      const customers = await User.find({ _id: { $in: userIds } });
-      
-      // Create a map from participant ID to user data
-      const participantToUserMap = {};
-      sessionParticipants.forEach(participant => {
-        const user = customers.find(c => c._id.toString() === participant.user.toString());
-        if (user) {
-          participantToUserMap[participant._id.toString()] = user;
-        }
-      });
-      
-      // Send email notifications
-      const emailPromises = attendanceData.map(async (item) => {
-        const customer = participantToUserMap[item.participantId];
-        if (!customer || !customer.email) {
-          console.log(`Skipping email for participant ${item.participantId} - no email found`);
-          return;
-        }
-
-        const attendanceStatus = item.attended ? 'present' : 'absent';
-
-        try {
-          const emailSent = await sendAttendanceNotificationEmail(
-            customer,
-            session,
-            attendanceStatus,
-            coachName
-          );
-          
-          if (emailSent) {
-            console.log(`✅ Professional attendance notification sent to ${customer.email}`);
-          } else {
-            console.error(`❌ Failed to send professional email to ${customer.email}`);
-          }
-        } catch (emailError) {
-          console.error(`❌ Error sending professional email to ${customer.email}:`, emailError.message);
-        }
-      });
-
-      // Wait for all emails to be sent (or fail)
-      await Promise.allSettled(emailPromises);
-      console.log('📧 Email notification process completed');
-      
-    } catch (emailError) {
-      console.error('❌ Error in email notification process:', emailError.message);
-      // Continue with response even if emails fail
-    }
-    
     res.status(200).json({
       success: true,
       message: 'Attendance marked successfully',
@@ -2062,28 +1525,7 @@ const getCoachSessions = async (req, res) => {
     const filter = { coach: coachId };
     
     if (status && status !== 'All Status') {
-      // Handle attendance-based filtering
-      if (status === 'attendance marked') {
-        // Sessions where any participant has attendance marked
-        filter['participants.attendanceMarkedAt'] = { $exists: true };
-      } else if (status === 'attendance not marked') {
-        // Sessions where no participants have attendance marked (past sessions only)
-        const now = new Date();
-        filter.scheduledDate = { $lt: now };
-        filter.$or = [
-          { 'participants.attendanceMarkedAt': { $exists: false } },
-          { 'participants.attended': { $exists: false } }
-        ];
-      } else if (status === 'present') {
-        // Sessions where any participant is marked as present
-        filter['participants.attended'] = true;
-      } else if (status === 'absent') {
-        // Sessions where any participant is marked as absent
-        filter['participants.attended'] = false;
-      } else {
-        // Fallback to original status filtering
-        filter.status = status;
-      }
+      filter.status = status;
     }
     
     if (date) {
@@ -3095,23 +2537,12 @@ const attendanceOnly = async (req, res) => {
       });
       
       if (participant) {
-        // Check if attendance status is changing
-        const previousStatus = participant.attended;
-        const newStatus = attendance.attended;
-        const isFirstTimeMarking = participant.attended === undefined;
-        const isStatusChanging = previousStatus !== newStatus;
-        
         // Update session participant data
         participant.attended = attendance.attended;
         participant.attendanceStatus = attendance.attended ? 'present' : 'absent';
         participant.attendanceMarkedAt = new Date();
         updatedCount++;
-        
-        // Store email sending flag for later use
-        participant.shouldSendEmail = isFirstTimeMarking || isStatusChanging;
-        
         console.log(`Updated participant ${attendance.participantId} - NO COACH DATA TOUCHED`);
-        console.log(`Email will be sent: ${participant.shouldSendEmail ? 'YES' : 'NO'} (First time: ${isFirstTimeMarking}, Status changed: ${isStatusChanging})`);
         
         // ONLY create/update Attendance record if attendance is marked (Present or Absent)
         // If attendance is not marked, remove any existing record
@@ -3219,71 +2650,6 @@ const attendanceOnly = async (req, res) => {
     
     console.log(`Successfully updated ${updatedCount} participants - NO COACH DATA TOUCHED`);
     
-    // Send email notifications to customers
-    try {
-      console.log('📧 Sending attendance notification emails...');
-      
-      // Get coach details
-      const coach = await User.findById(session.coach);
-      const coachName = coach?.firstName ? `${coach.firstName} ${coach.lastName || ''}` : 'Your Coach';
-      
-      // Get customer details for email notifications
-      // First, get the actual user IDs from the session participants
-      const participantIds = [...new Set(attendanceData.map(item => item.participantId))];
-      const sessionParticipants = session.participants.filter(p => 
-        participantIds.includes(p._id.toString())
-      );
-      
-      // Extract user IDs from participants
-      const userIds = sessionParticipants.map(p => p.user.toString());
-      const customers = await User.find({ _id: { $in: userIds } });
-      
-      // Create a map from participant ID to user data
-      const participantToUserMap = {};
-      sessionParticipants.forEach(participant => {
-        const user = customers.find(c => c._id.toString() === participant.user.toString());
-        if (user) {
-          participantToUserMap[participant._id.toString()] = user;
-        }
-      });
-      
-      // Send email notifications
-      const emailPromises = attendanceData.map(async (item) => {
-        const customer = participantToUserMap[item.participantId];
-        if (!customer || !customer.email) {
-          console.log(`Skipping email for participant ${item.participantId} - no email found`);
-          return;
-        }
-
-        const attendanceStatus = item.attended ? 'present' : 'absent';
-
-        try {
-          const emailSent = await sendAttendanceNotificationEmail(
-            customer,
-            session,
-            attendanceStatus,
-            coachName
-          );
-          
-          if (emailSent) {
-            console.log(`✅ Professional attendance notification sent to ${customer.email}`);
-          } else {
-            console.error(`❌ Failed to send professional email to ${customer.email}`);
-          }
-        } catch (emailError) {
-          console.error(`❌ Error sending professional email to ${customer.email}:`, emailError.message);
-        }
-      });
-
-      // Wait for all emails to be sent (or fail)
-      await Promise.allSettled(emailPromises);
-      console.log('📧 Email notification process completed');
-      
-    } catch (emailError) {
-      console.error('❌ Error in email notification process:', emailError.message);
-      // Continue with response even if emails fail
-    }
-    
     res.status(200).json({
       success: true,
       message: 'Attendance marked successfully (no coach data touched)',
@@ -3384,197 +2750,6 @@ const simpleAttendanceMarking = async (req, res) => {
   }
 };
 
-// @desc    Update coach payroll payment status
-// @route   PUT /api/coaches/:coachId/payroll/:payrollId/payment-status
-// @access  Private (Admin or Coaching Manager)
-const updateCoachPayrollPaymentStatus = async (req, res) => {
-  try {
-    const { coachId, payrollId } = req.params;
-    const { paymentStatus, paymentMethod, paymentNotes } = req.body;
-
-    // Validate payment status
-    if (!paymentStatus || !['pending', 'paid'].includes(paymentStatus)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Payment status must be either "pending" or "paid"'
-      });
-    }
-
-    // Find the payroll record
-    const payroll = await CoachPayroll.findOne({
-      _id: payrollId,
-      coachId: coachId
-    });
-
-    if (!payroll) {
-      return res.status(404).json({
-        success: false,
-        message: 'Payroll record not found'
-      });
-    }
-
-    // Update payment status
-    payroll.paymentStatus = paymentStatus;
-    
-    if (paymentStatus === 'paid') {
-      payroll.paymentDate = new Date();
-    } else {
-      payroll.paymentDate = null;
-    }
-
-    if (paymentMethod) {
-      payroll.paymentMethod = paymentMethod;
-    }
-
-    if (paymentNotes !== undefined) {
-      payroll.paymentNotes = paymentNotes;
-    }
-
-    payroll.updatedBy = req.user ? req.user.id : null;
-    await payroll.save();
-
-    res.status(200).json({
-      success: true,
-      message: `Payment status updated to ${paymentStatus}`,
-      data: payroll
-    });
-
-  } catch (error) {
-    console.error('Error updating coach payroll payment status:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error updating payment status',
-      error: error.message
-    });
-  }
-};
-
-// @desc    Create or update coach payroll record
-// @route   POST /api/coaches/:coachId/payroll
-// @access  Private (Admin or Coaching Manager)
-const createOrUpdateCoachPayroll = async (req, res) => {
-  try {
-    const { coachId } = req.params;
-    const { 
-      period, 
-      payroll, 
-      paymentStatus = 'pending', 
-      paymentMethod = 'bank_transfer',
-      paymentNotes = '' 
-    } = req.body;
-
-    // Validate required fields
-    if (!period || !payroll) {
-      return res.status(400).json({
-        success: false,
-        message: 'Period and payroll data are required'
-      });
-    }
-
-    // Check if coach exists
-    const coach = await Coach.findById(coachId).populate('userId', 'firstName lastName email');
-    if (!coach) {
-      return res.status(404).json({
-        success: false,
-        message: 'Coach not found'
-      });
-    }
-
-    // Check if payroll record already exists for this period
-    const existingPayroll = await CoachPayroll.findOne({
-      coachId: coachId,
-      'period.startDate': new Date(period.startDate),
-      'period.endDate': new Date(period.endDate)
-    });
-
-    let payrollRecord;
-
-    if (existingPayroll) {
-      // Update existing record
-      existingPayroll.payroll = payroll;
-      existingPayroll.paymentStatus = paymentStatus;
-      existingPayroll.paymentMethod = paymentMethod;
-      existingPayroll.paymentNotes = paymentNotes;
-      
-      if (paymentStatus === 'paid' && !existingPayroll.paymentDate) {
-        existingPayroll.paymentDate = new Date();
-      } else if (paymentStatus === 'pending') {
-        existingPayroll.paymentDate = null;
-      }
-      
-      existingPayroll.updatedBy = req.user ? req.user.id : null;
-      await existingPayroll.save();
-      payrollRecord = existingPayroll;
-    } else {
-      try {
-        // Create new record
-        payrollRecord = new CoachPayroll({
-          coachId: coachId,
-          coachName: `${coach.userId.firstName} ${coach.userId.lastName}`,
-          coachEmail: coach.userId.email,
-          period: {
-            startDate: new Date(period.startDate),
-            endDate: new Date(period.endDate)
-          },
-          payroll: payroll,
-          paymentStatus: paymentStatus,
-          paymentMethod: paymentMethod,
-          paymentNotes: paymentNotes,
-          paymentDate: paymentStatus === 'paid' ? new Date() : null,
-          createdBy: req.user ? req.user.id : null
-        });
-
-        await payrollRecord.save();
-      } catch (error) {
-        // Handle unique constraint violation
-        if (error.code === 11000) {
-          // Record already exists, find and update it
-          const duplicatePayroll = await CoachPayroll.findOne({
-            coachId: coachId,
-            'period.startDate': new Date(period.startDate),
-            'period.endDate': new Date(period.endDate)
-          });
-          
-          if (duplicatePayroll) {
-            duplicatePayroll.payroll = payroll;
-            duplicatePayroll.paymentStatus = paymentStatus;
-            duplicatePayroll.paymentMethod = paymentMethod;
-            duplicatePayroll.paymentNotes = paymentNotes;
-            
-            if (paymentStatus === 'paid' && !duplicatePayroll.paymentDate) {
-              duplicatePayroll.paymentDate = new Date();
-            } else if (paymentStatus === 'pending') {
-              duplicatePayroll.paymentDate = null;
-            }
-            
-            duplicatePayroll.updatedBy = req.user ? req.user.id : null;
-            await duplicatePayroll.save();
-            payrollRecord = duplicatePayroll;
-          } else {
-            throw error;
-          }
-        } else {
-          throw error;
-        }
-      }
-    }
-
-    res.status(200).json({
-      success: true,
-      message: existingPayroll ? 'Payroll record updated successfully' : 'Payroll record created successfully',
-      data: payrollRecord
-    });
-
-  } catch (error) {
-    console.error('Error creating/updating coach payroll:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error creating/updating payroll record',
-      error: error.message
-    });
-  }
-};
-
 // Export all functions
 export {
   getAllCoaches,
@@ -3611,12 +2786,7 @@ export {
   markSessionAttendance,
   createSessionsForEnrollments,
   getCoachStats,
-  getCoachPayroll,
-  getCoachPayrollDetails,
-  updateCoachHourlyRate,
   toggleCoachStatus,
-  updateCoachAvailability,
-  updateCoachPayrollPaymentStatus,
-  createOrUpdateCoachPayroll
+  updateCoachAvailability
 };
 
